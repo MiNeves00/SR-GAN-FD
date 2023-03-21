@@ -1,0 +1,8 @@
+name: superres
+python: 3.9.16
+build_dependencies:
+- pip>=22.0.4
+- setuptools>=57.4.0
+- wheel>=0.38.4
+dependencies:
+- -r requirements.txt
