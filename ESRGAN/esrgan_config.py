@@ -46,28 +46,28 @@ mode = "test"
 exp_name = "train_ESRGAN_x4_bubbles"
 
 # MLflow
-experience_name = 'ESRGAN_x4' # each name is associated with unique id
-run_name = 'train_30batches'
-run_id = '2f4d7eef4e784292892a39599f91f03c' # used to resume runs
+experience_name = 'ESRGAN_x4_bubbles' # each name is associated with unique id
+run_name = 'esrgan_bubbles_1epoch'
+run_id = 'faf9d55ed266496b8d1f54be0b3057bc' # used to resume runs
 tags = ''
-description = 'ESRGAN base model trained on 10 epochs on the Bubble dataset'
+description = 'ESRGAN base model trained on 1 epochs on the Bubble dataset'
 
 if mode == "train":
     print("Train")
     # Dataset address
     '''
-    train_gt_images_dir = f"./data/DIV2K/ESRGAN/train"
+    train_gt_images_dir = f"../data/DIV2K/ESRGAN/train"
 
-    valid_gt_images_dir = f"./data/DIV2K/ESRGAN/validHR"
-    valid_lr_images_dir = f"./data/DIV2K/ESRGAN/validLR"
+    valid_gt_images_dir = f"../data/DIV2K/ESRGAN/validHR"
+    valid_lr_images_dir = f"../data/DIV2K/ESRGAN/validLR"
 
-    test_gt_images_dir = f"./data/BSDS100/GTmod12"
-    test_lr_images_dir = f"./data/BSDS100/LRbicx{upscale_factor}"
+    test_gt_images_dir = f"../data/BSDS100/GTmod12"
+    test_lr_images_dir = f"../data/BSDS100/LRbicx{upscale_factor}"
     '''
 
-    train_gt_images_dir = f"./data/Bubbles/train"
+    train_gt_images_dir = f"../data/Bubbles/train"
 
-    valid_gt_images_dir = f"./data/Bubbles/valid"
+    valid_gt_images_dir = f"../data/Bubbles/valid"
 
 
     gt_image_size = 128
@@ -88,7 +88,7 @@ if mode == "train":
     resume_g_model_weights_path = f""
 
     # Total num epochs (400,000 iters)
-    epochs = 10
+    epochs = 1
     print("Total Epochs -> "+str(epochs))
 
     # Loss function weight
@@ -127,7 +127,7 @@ if mode == "test":
     #gt_image_size = 480 # bubbles
     #lr_dir = f"./data/Bubbles/bubblesLR"
     #sr_dir = f"./data/Bubbles/testSR"
-    gt_dir = f"./data/Bubbles/test"
+    gt_dir = f"../data/Bubbles/test"
 
     #g_model_weights_path = "./results/pretrained_models/ESRGAN_x4-DFO2K-25393df7.pth.tar"
-    g_model_weights_path = "./mlruns/458631362597146827/2f4d7eef4e784292892a39599f91f03c/artifacts/g_model"
+    g_model_weights_path = "./mlruns/890798721825805310/faf9d55ed266496b8d1f54be0b3057bc/artifacts/g_model"

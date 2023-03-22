@@ -23,6 +23,8 @@ from torch.optim.swa_utils import AveragedModel
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
+import mlflow
+
 import esrgan_config
 
 
@@ -45,7 +47,7 @@ def main():
     best_psnr = 0.0
     best_ssim = 0.0
 
-    train_prefetcher, test_prefetcher = load_dataset()
+    train_prefetcher, valid_prefetcher = load_dataset()
     print("Load all datasets successfully.")
 
     d_model, g_model, ema_g_model = build_model()
@@ -54,14 +56,18 @@ def main():
     pixel_criterion, content_criterion, adversarial_criterion = define_loss()
     print("Define all loss functions successfully.")
 
-    d_optimizer, g_optimizer = define_optimizer(d_model, g_model)
-    print("Define all optimizer functions successfully.")
+    # Start MLFlow Tracking
+    try:
+        mlflow.set_experiment(esrgan_config.experience_name)
+    except:
+        experiment_id= mlflow.create_experiment(esrgan_config.experience_name)
+        print("New Experiment created with name: " + esrgan_config.experience_name + " and ID: " + str(experiment_id))
+    
 
-    d_scheduler, g_scheduler = define_scheduler(d_optimizer, g_optimizer)
-    print("Define all optimizer scheduler functions successfully.")
-
+    
     print("Check whether to load pretrained d model weights...")
     if esrgan_config.pretrained_d_model_weights_path:
+        #d_model = mlflow.pytorch.load_model(esrgan_config.pretrained_d_model_weights_path)
         d_model = load_state_dict(d_model, esrgan_config.pretrained_d_model_weights_path)
         print(f"Loaded `{esrgan_config.pretrained_d_model_weights_path}` pretrained model weights successfully.")
     else:
@@ -69,11 +75,20 @@ def main():
 
     print("Check whether to load pretrained g model weights...")
     if esrgan_config.pretrained_g_model_weights_path:
+        #g_model = mlflow.pytorch.load_model(esrgan_config.pretrained_g_model_weights_path)
         g_model = load_state_dict(g_model, esrgan_config.pretrained_g_model_weights_path)
         print(f"Loaded `{esrgan_config.pretrained_g_model_weights_path}` pretrained model weights successfully.")
     else:
         print("Pretrained g model weights not found.")
 
+    # Define optimizers
+    d_optimizer, g_optimizer = define_optimizer(d_model, g_model)
+    print("Define all optimizer functions successfully.")
+
+    d_scheduler, g_scheduler = define_scheduler(d_optimizer, g_optimizer)
+    print("Define all optimizer scheduler functions successfully.")
+
+    '''
     print("Check whether the pretrained d model is restored...")
     if esrgan_config.resume_d_model_weights_path:
         d_model, _, start_epoch, best_psnr, best_ssim, optimizer, scheduler = load_state_dict(
@@ -98,6 +113,7 @@ def main():
         print("Loaded pretrained model weights.")
     else:
         print("Resume training g model not found. Start training from scratch.")
+    '''
 
     # Create a experiment results
     samples_dir = os.path.join("samples", esrgan_config.exp_name)
@@ -108,6 +124,7 @@ def main():
     # Create training process log file
     writer = SummaryWriter(os.path.join("samples", "logs", esrgan_config.exp_name))
 
+
     # Initialize the gradient scaler
     scaler = amp.GradScaler()
 
@@ -115,7 +132,7 @@ def main():
     psnr_model = PSNR(esrgan_config.upscale_factor, esrgan_config.only_test_y_channel)
     ssim_model = SSIM(esrgan_config.upscale_factor, esrgan_config.only_test_y_channel)
     niqe_model = NIQE(esrgan_config.upscale_factor, esrgan_config.niqe_model_path)
-    lpips_model = LPIPS(net='alex')
+    lpips_model = LPIPS(net=esrgan_config.lpips_net)
 
     # Transfer the IQA model to the specified device
     psnr_model = psnr_model.to(device=esrgan_config.device)
@@ -123,12 +140,26 @@ def main():
     niqe_model = niqe_model.to(device=esrgan_config.device, non_blocking=True)
     lpips_model = lpips_model.to(device=esrgan_config.device, non_blocking=True)
 
-    # TODO: save the best niqe and lpips
-    niqe_metrics = 0.0
-    lpips_metrics = 0.0
+
+    best_lpips_metrics = 1.0
+
+    # Start MLflow run & log parameters 
+    try:
+      mlflow.start_run(run_name=esrgan_config.run_name, tags=esrgan_config.tags, description=esrgan_config.description)
+    except: # If last session was not ended
+      mlflow.end_run()
+      mlflow.start_run(run_name=esrgan_config.run_name, tags=esrgan_config.tags, description=esrgan_config.description)
+    
+    run = mlflow.active_run()
+    print("Active run_id: {}".format(run.info.run_id))
+
+    #mlflow.log_params({'exp_name':esrgan_config.exp_name,'d_arch_name':esrgan_config.d_arch_name,'g_arch_name':esrgan_config.g_arch_name,'in_channels':esrgan_config.in_channels,'out_channels':esrgan_config.out_channels,'channels':esrgan_config.channels,'growth_channels':esrgan_config.growth_channels,'num_blocks':esrgan_config.num_blocks,'upscale_factor':esrgan_config.upscale_factor,'gt_image_size':esrgan_config.gt_image_size,'batch_size':esrgan_config.batch_size,'train_gt_images_dir':esrgan_config.train_gt_images_dir,'test_gt_images_dir':esrgan_config.test_gt_images_dir,'test_lr_images_dir':esrgan_config.test_lr_images_dir,'pretrained_d_model_weights_path':esrgan_config.pretrained_d_model_weights_path,'pretrained_g_model_weights_path':esrgan_config.pretrained_g_model_weights_path,'resume_d_model_weights_path':esrgan_config.resume_d_model_weights_path,'resume_g_model_weights_path':esrgan_config.resume_g_model_weights_path,'epochs':esrgan_config.epochs,'pixel_weight':esrgan_config.pixel_weight,'content_weight':esrgan_config.content_weight,'adversarial_weight':esrgan_config.adversarial_weight,'feature_model_extractor_node':esrgan_config.feature_model_extractor_node,'feature_model_normalize_mean':esrgan_config.feature_model_normalize_mean,'feature_model_normalize_std':esrgan_config.feature_model_normalize_std,'model_lr':esrgan_config.model_lr,'model_betas':esrgan_config.model_betas,'model_eps':esrgan_config.model_eps,'model_weight_decay':esrgan_config.model_weight_decay,'model_ema_decay':esrgan_config.model_ema_decay,'lr_scheduler_milestones':esrgan_config.lr_scheduler_milestones,'lr_scheduler_gamma':esrgan_config.lr_scheduler_gamma,'lpips_net':esrgan_config.lpips_net,'niqe_model_path':esrgan_config.niqe_model_path})
+    mlflow.log_params({'exp_name':esrgan_config.exp_name,'d_arch_name':esrgan_config.d_arch_name,'g_arch_name':esrgan_config.g_arch_name,'in_channels':esrgan_config.in_channels,'out_channels':esrgan_config.out_channels,'channels':esrgan_config.channels,'growth_channels':esrgan_config.growth_channels,'num_blocks':esrgan_config.num_blocks,'upscale_factor':esrgan_config.upscale_factor,'gt_image_size':esrgan_config.gt_image_size,'batch_size':esrgan_config.batch_size,'train_gt_images_dir':esrgan_config.train_gt_images_dir,'valid_gt_images_dir':esrgan_config.valid_gt_images_dir,
+                       'pretrained_d_model_weights_path':esrgan_config.pretrained_d_model_weights_path,'pretrained_g_model_weights_path':esrgan_config.pretrained_g_model_weights_path,'resume_d_model_weights_path':esrgan_config.resume_d_model_weights_path,'resume_g_model_weights_path':esrgan_config.resume_g_model_weights_path,'epochs':esrgan_config.epochs,'pixel_weight':esrgan_config.pixel_weight,'content_weight':esrgan_config.content_weight,'adversarial_weight':esrgan_config.adversarial_weight,'feature_model_extractor_node':esrgan_config.feature_model_extractor_node,'feature_model_normalize_mean':esrgan_config.feature_model_normalize_mean,'feature_model_normalize_std':esrgan_config.feature_model_normalize_std,'model_lr':esrgan_config.model_lr,'model_betas':esrgan_config.model_betas,'model_eps':esrgan_config.model_eps,'model_weight_decay':esrgan_config.model_weight_decay,'model_ema_decay':esrgan_config.model_ema_decay,'lr_scheduler_milestones':esrgan_config.lr_scheduler_milestones,'lr_scheduler_gamma':esrgan_config.lr_scheduler_gamma,'lpips_net':esrgan_config.lpips_net,'niqe_model_path':esrgan_config.niqe_model_path})
+
 
     for epoch in range(start_epoch, esrgan_config.epochs):
-        train(d_model,
+        pixel_loss, content_loss, adversarial_loss, d_gt_probabilities, d_sr_probabilities= train(d_model,
               g_model,
               ema_g_model,
               train_prefetcher,
@@ -140,53 +171,58 @@ def main():
               epoch,
               scaler,
               writer)
-        psnr, ssim, niqe, lpips = validate(g_model,
-                              test_prefetcher,
+
+        psnr_val, ssim_val, niqe_val, lpips_val = validate(g_model,
+                              valid_prefetcher,
                               epoch,
                               writer,
                               psnr_model,
                               ssim_model,
                               niqe_model,
                               lpips_model,
-                              "Test")
+                              "Valid")
+
         print("\n")
+
+        log_epoch(g_model, d_model, pixel_loss, content_loss, adversarial_loss, d_gt_probabilities, d_sr_probabilities, psnr_val, ssim_val, niqe_val, lpips_val, epoch)
 
         # Update LR
         d_scheduler.step()
         g_scheduler.step()
 
-        # Automatically save the model with the highest index
-        is_best = psnr > best_psnr and ssim > best_ssim
-        is_last = (epoch + 1) == esrgan_config.epochs
-        best_psnr = max(psnr, best_psnr)
-        best_ssim = max(ssim, best_ssim)
-        save_checkpoint({"epoch": epoch + 1,
-                         "best_psnr": best_psnr,
-                         "best_ssim": best_ssim,
-                         "state_dict": d_model.state_dict(),
-                         "optimizer": d_optimizer.state_dict(),
-                         "scheduler": d_scheduler.state_dict()},
-                        f"d_epoch_{epoch + 1}.pth.tar",
-                        samples_dir,
-                        results_dir,
-                        "d_best.pth.tar",
-                        "d_last.pth.tar",
-                        is_best,
-                        is_last)
-        save_checkpoint({"epoch": epoch + 1,
-                         "best_psnr": best_psnr,
-                         "best_ssim": best_ssim,
-                         "state_dict": g_model.state_dict(),
-                         "ema_state_dict": ema_g_model.state_dict(),
-                         "optimizer": g_optimizer.state_dict(),
-                         "scheduler": g_scheduler.state_dict()},
-                        f"g_epoch_{epoch + 1}.pth.tar",
-                        samples_dir,
-                        results_dir,
-                        "g_best.pth.tar",
-                        "g_last.pth.tar",
-                        is_best,
-                        is_last)
+        # Save the best model with the highest LPIPS score in validation dataset
+        is_best = lpips_val < best_lpips_metrics
+        best_lpips_metrics = min(lpips_val, best_lpips_metrics)
+
+        if is_best:
+          print("Saving best model...")
+          mlflow.pytorch.log_model(g_model, "g_model")
+          mlflow.pytorch.log_model(d_model, "d_model")
+          print("Finished Saving")
+        else:
+          print("Was not the best")
+
+    # End logging
+    mlflow.end_run()
+
+
+
+
+        
+def log_epoch(g_model, d_model, g_pixel_loss, g_content_loss, g_adversarial_loss, d_gt_probabilities, d_sr_probabilities, psnr_val, ssim_val, niqe_val, lpips_val, epoch):
+    '''
+    g_pixel_loss, g_content_loss, g_adversarial_loss: train generator loss
+    d_gt_probabilities, d_sr_probabilities: descriminator probabilities
+    psnr, ssim, niqe, lpips: validation metrics
+    '''
+
+    print('\nLogging epoch data...')
+
+    g_train_loss = g_pixel_loss + g_content_loss + g_adversarial_loss
+
+    mlflow.log_metrics({'g_train_loss':g_train_loss, 'g_pixel_loss':g_pixel_loss, 'g_content_loss':g_content_loss, 'g_adversarial_loss':g_adversarial_loss, 'd_gt_probabilities':d_gt_probabilities, 'd_sr_probabilities':d_sr_probabilities, 'psnr_val':psnr_val, 'ssim_val':ssim_val, 'niqe_val':niqe_val, 'lpips_val':lpips_val}, step=epoch)
+
+    print('Finished Logging\n')
 
 
 def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
@@ -195,7 +231,13 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
                                             esrgan_config.gt_image_size,
                                             esrgan_config.upscale_factor,
                                             "Train")
-    test_datasets = TestImageDataset(esrgan_config.test_gt_images_dir, esrgan_config.test_lr_images_dir)
+    '''valid_datasets = TestImageDataset(esrgan_config.valid_gt_images_dir, esrgan_config.valid_lr_images_dir)
+    test_datasets = TestImageDataset(esrgan_config.test_gt_images_dir, esrgan_config.test_lr_images_dir)'''
+
+    valid_datasets = TrainValidImageDataset(esrgan_config.valid_gt_images_dir,
+                                        esrgan_config.gt_image_size,
+                                        esrgan_config.upscale_factor,
+                                        "Valid")
 
     # Generator all dataloader
     train_dataloader = DataLoader(train_datasets,
@@ -205,7 +247,8 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
                                   pin_memory=True,
                                   drop_last=True,
                                   persistent_workers=True)
-    test_dataloader = DataLoader(test_datasets,
+    
+    valid_dataloader = DataLoader(valid_datasets,
                                  batch_size=1,
                                  shuffle=False,
                                  num_workers=1,
@@ -215,9 +258,9 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
 
     # Place all data on the preprocessing data loader
     train_prefetcher = CUDAPrefetcher(train_dataloader, esrgan_config.device)
-    test_prefetcher = CUDAPrefetcher(test_dataloader, esrgan_config.device)
+    valid_prefetcher = CUDAPrefetcher(valid_dataloader, esrgan_config.device)
 
-    return train_prefetcher, test_prefetcher
+    return train_prefetcher, valid_prefetcher
 
 
 def build_model() -> [nn.Module, nn.Module, nn.Module]:
@@ -293,7 +336,10 @@ def train(
         epoch: int,
         scaler: amp.GradScaler,
         writer: SummaryWriter
-) -> None:
+):
+    '''
+    Returns average of key metrics (all in progress meter)
+    '''
     print("Training")
     # Calculate how many batches of data are in each Epoch
     batches = len(train_prefetcher)
@@ -324,6 +370,8 @@ def train(
 
     # Get the initialization training time
     end = time.time()
+
+    #limit = 12
 
     while batch_data is not None:
         # Calculate the time it takes to load a batch of data
@@ -440,6 +488,12 @@ def train(
         # terminal print data normally
         batch_index += 1
 
+        #if batch_index>limit:
+        #  print('Batch limit reached')
+        #  return pixel_losses.avg, content_losses.avg, adversarial_losses.avg, d_gt_probabilities.avg, d_sr_probabilities.avg
+
+    return pixel_losses.avg, content_losses.avg, adversarial_losses.avg, d_gt_probabilities.avg, d_sr_probabilities.avg
+
 
 def validate(
         g_model: nn.Module,
@@ -457,14 +511,22 @@ def validate(
     psnres = AverageMeter("PSNR", ":4.2f")
     ssimes = AverageMeter("SSIM", ":4.4f")
     niqees = AverageMeter("NIQE", ":4.2f")
-    lpipses = AverageMeter("LPIPS", ":4.2f")
+    lpipses = AverageMeter("LPIPS", ":4.4f")
     progress = ProgressMeter(len(data_prefetcher), [batch_time, psnres, ssimes, niqees, lpipses], prefix=f"{mode}: ")
+
+    print_freq = 1
+    if mode == "Valid":
+      print_freq = esrgan_config.valid_print_frequency
+    else:
+      print_freq = esrgan_config.test_print_frequency
 
     # Put the adversarial network model in validation mode
     g_model.eval()
 
     # Initialize the number of data batches to print logs on the terminal
     batch_index = 0
+
+    #limit = 20
 
     # Initialize the data loader and load the first batch of data
     data_prefetcher.reset()
@@ -501,7 +563,7 @@ def validate(
             end = time.time()
 
             # Record training log information
-            if batch_index % esrgan_config.valid_print_frequency == 0:
+            if batch_index % print_freq == 0:
                 progress.display(batch_index + 1)
 
             # Preload the next batch of data
@@ -510,6 +572,10 @@ def validate(
             # After training a batch of data, add 1 to the number of data batches to ensure that the
             # terminal print data normally
             batch_index += 1
+
+            #if batch_index > limit:
+            #  print("Limit reached")
+            #  break
 
     # print metrics
     progress.display_summary()

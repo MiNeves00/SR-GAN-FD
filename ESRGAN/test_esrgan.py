@@ -18,11 +18,14 @@ import torch
 from natsort import natsorted
 
 import esrgan_config
+import mlflow
 import imgproc
 import model
 from image_quality_assessment import PSNR, SSIM, NIQE
 from lpips import LPIPS
 from utils import make_directory
+from dataset import CUDAPrefetcher, TrainValidImageDataset
+from torch.utils.data import DataLoader
 
 model_names = sorted(
     name for name in model.__dict__ if
@@ -32,12 +35,44 @@ save_images = True
 
 
 def main() -> None:
+
+    # Set MLflow experiment & run
+    mlflow.set_experiment(esrgan_config.experience_name)
+    try:
+      mlflow.start_run(run_id=esrgan_config.run_id, tags=esrgan_config.tags, description=esrgan_config.description)
+    except: # If last session was not ended
+      mlflow.end_run()
+      mlflow.start_run(run_id=esrgan_config.run_id, tags=esrgan_config.tags, description=esrgan_config.description)
+
+    print("Continuing run with id:" + str(esrgan_config.run_id))
+
+    # Load Test Dataset
+    test_datasets = TrainValidImageDataset(esrgan_config.gt_dir,
+                                        0,
+                                        esrgan_config.upscale_factor,
+                                        "Valid")
+    
+    test_dataloader = DataLoader(test_datasets,
+                                 batch_size=1,
+                                 shuffle=False,
+                                 num_workers=1,
+                                 pin_memory=True,
+                                 drop_last=False,
+                                 persistent_workers=True)
+    
+    test_prefetcher = CUDAPrefetcher(test_dataloader, esrgan_config.device)
+    # Initialize the data loader and load the first batch of data
+    test_prefetcher.reset()
+
+
+
     # Initialize the super-resolution bsrgan_model
     esrgan_model = model.__dict__[esrgan_config.g_arch_name](in_channels=esrgan_config.in_channels,
                                                              out_channels=esrgan_config.out_channels,
                                                              channels=esrgan_config.channels,
                                                              growth_channels=esrgan_config.growth_channels,
                                                              num_blocks=esrgan_config.num_blocks)
+    '''
     esrgan_model = esrgan_model.to(device=esrgan_config.device)
     print(f"Build `{esrgan_config.g_arch_name}` model successfully.")
 
@@ -46,9 +81,15 @@ def main() -> None:
     esrgan_model.load_state_dict(checkpoint["state_dict"])
     print(f"Load `{esrgan_config.g_arch_name}` model weights "
           f"`{os.path.abspath(esrgan_config.g_model_weights_path)}` successfully.")
+    '''
+
+    
+    # Load Generator Model
+    g_model = mlflow.pytorch.load_model(esrgan_config.g_model_weights_path)
+    esrgan_model = g_model.to(device=esrgan_config.device)
 
     # Create a folder of super-resolution experiment results
-    make_directory(esrgan_config.sr_dir)
+    #make_directory(esrgan_config.sr_dir)
 
     # Start the verification mode of the bsrgan_model.
     esrgan_model.eval()
@@ -72,11 +113,15 @@ def main() -> None:
     lpips_metrics = 0.0
 
     # Get a list of test image file names.
-    file_names = natsorted(os.listdir(esrgan_config.lr_dir))
+    file_names = os.listdir(esrgan_config.gt_dir)
     # Get the number of test image files.
-    total_files = len(file_names)
+    total_files = int(len(file_names))
+
+    pathLR = "testImagesLR/"
+    pathTest = "testImages/"
 
     for index in range(total_files):
+        '''
         lr_image_path = os.path.join(esrgan_config.lr_dir, file_names[index])
         sr_image_path = os.path.join(esrgan_config.sr_dir, file_names[index])
         gt_image_path = os.path.join(esrgan_config.gt_dir, file_names[index])
@@ -84,6 +129,15 @@ def main() -> None:
         print(f"Processing `{os.path.abspath(lr_image_path)}`...")
         lr_tensor = imgproc.preprocess_one_image(lr_image_path, esrgan_config.device)
         gt_tensor = imgproc.preprocess_one_image(gt_image_path, esrgan_config.device)
+        '''
+
+        batch_data = test_prefetcher.next()
+        gt_tensor = batch_data["gt"].to(device=esrgan_config.device, non_blocking=True)
+        lr_tensor = batch_data["lr"].to(device=esrgan_config.device, non_blocking=True)
+
+        lr_image = imgproc.tensor_to_image(lr_tensor, False, False)
+        lr_image = cv2.cvtColor(lr_image, cv2.COLOR_RGB2BGR)
+        mlflow.log_image(lr_image, pathLR+file_names[index])
 
         # Only reconstruct the Y channel image data.
         with torch.no_grad():
@@ -93,7 +147,8 @@ def main() -> None:
         if save_images:
           sr_image = imgproc.tensor_to_image(sr_tensor, False, False)
           sr_image = cv2.cvtColor(sr_image, cv2.COLOR_RGB2BGR)
-          cv2.imwrite(sr_image_path, sr_image)
+          mlflow.log_image(sr_image, pathTest+file_names[index])
+          #cv2.imwrite(sr_image_path, sr_image)
 
         # Cal IQA metrics
         psnr_metrics += psnr(sr_tensor, gt_tensor).item()
@@ -119,6 +174,12 @@ def main() -> None:
           f"NIQE: {avg_niqe:4.2f} [100u]\n"
           f"LPIPS: {avg_lpips:4.2f} [100u]")
 
+    metrics_dict = {"PSNR": avg_psnr, "SSIM": avg_ssim, "NIQE": avg_niqe, "LPIPS": avg_lpips}
+    mlflow.log_dict(metrics_dict,"testMetrics.json")
+
+    mlflow.end_run()
+
 
 if __name__ == "__main__":
     main()
+
