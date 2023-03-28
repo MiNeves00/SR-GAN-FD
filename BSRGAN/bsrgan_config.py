@@ -43,6 +43,7 @@ cudnn.benchmark = True
 only_test_y_channel = True
 # NIQE model address
 niqe_model_path = "./results/pretrained_models/niqe_model.mat"
+lpips_net = 'alex'
 # Model architecture name
 d_model_arch_name = "discriminator_unet"
 g_model_arch_name = "bsrgan_x4"
@@ -61,14 +62,26 @@ upscale_factor = 4
 # Current configuration parameter method
 mode = "train"
 # Experiment name, easy to save weights and log files
-exp_name = "BSRGAN_x4-DIV2K"
+exp_name = "BSRGAN_x4-DIV2K_bubbles"
+
+# MLflow
+experience_name = 'BSRGAN_x4_bubbles' # each name is associated with unique id
+run_name = 'bsrgan_bubbles_1epoch'
+run_id = '' # used to resume runs
+tags = ''
+description = 'BSRGAN base model trained on 1 epochs on the Bubble dataset'
 
 if mode == "train":
+    print("Train")
     # Dataset address
-    train_gt_images_dir = f"./data/DIV2K/BSRGAN/train"
+    '''train_gt_images_dir = f"./data/DIV2K/BSRGAN/train"
 
     test_gt_images_dir = f"./data/Set5/GTmod12"
-    test_lr_images_dir = f"./data/Set5/LRbicx{upscale_factor}"
+    test_lr_images_dir = f"./data/Set5/LRbicx{upscale_factor}"'''
+
+    train_gt_images_dir = f"../data/Bubbles/train"
+
+    valid_gt_images_dir = f"../data/Bubbles/valid"
 
     crop_image_size = 320
     gt_image_size = int(72 * upscale_factor)
@@ -77,14 +90,15 @@ if mode == "train":
 
     # Load the address of the pretrained model
     pretrained_d_model_weights_path = ""
-    pretrained_g_model_weights_path = "./results/BSRNet_x4-DIV2K/best.pth.tar"
+    pretrained_g_model_weights_path = "./results/pretrained_models/BSRGAN/BSRGAN_x4-DIV2K-6d507222.pth.tar"
 
     # Incremental training and migration training
     resume_d_model_weights_path = ""
     resume_g_model_weights_path = ""
 
     # Total num epochs (1,600,000 iters)
-    epochs = 1640
+    epochs = 1
+    print("Total Epochs -> "+str(epochs))
 
     # Feature extraction layer parameter configuration
     feature_model_extractor_nodes = ["features.2", "features.7", "features.16", "features.25", "features.34"]
@@ -111,11 +125,12 @@ if mode == "train":
 
     # How many iterations to print the training result
     train_print_frequency = 100
-    test_print_frequency = 1
+    valid_print_frequency = 100
 
 if mode == "test":
+    print("Test")
     # Test data address
     lr_dir = "./data/RealSRSet"
     sr_dir = f"./results/{exp_name}"
 
-    g_model_weights_path = "./results/pretrained_models/BSRGAN_x4-DIV2K-6d507222.pth.tar"
+    g_model_weights_path = "./results/pretrained_models/BSRGAN/BSRGAN_x4-DIV2K-6d507222.pth.tar"

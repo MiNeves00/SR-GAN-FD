@@ -72,7 +72,8 @@ class TrainValidImageDataset(Dataset):
             gt_crop_image = imgproc.random_horizontally_flip(gt_crop_image, 0.5)
             gt_crop_image = imgproc.random_vertically_flip(gt_crop_image, 0.5)
         elif self.mode == "Valid":
-            gt_crop_image = imgproc.center_crop(gt_image, self.crop_image_size)
+            gt_crop_image = gt_image
+            #gt_crop_image = imgproc.center_crop(gt_image, self.crop_image_size)
         else:
             raise ValueError("Unsupported data processing model, please use `Train` or `Valid`.")
 

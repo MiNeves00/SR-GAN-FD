@@ -22,12 +22,15 @@ from torch.optim.swa_utils import AveragedModel
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
+import mlflow
+
 import bsrgan_config
 import model
 from dataset import CUDAPrefetcher, TrainValidImageDataset, TestImageDataset
-from image_quality_assessment import PSNR, SSIM
+from image_quality_assessment import PSNR, SSIM, NIQE
+from lpips import LPIPS
 from imgproc import random_crop
-from utils import load_state_dict, make_directory, save_checkpoint, validate, AverageMeter, ProgressMeter
+from utils import load_state_dict, make_directory, save_checkpoint, AverageMeter, ProgressMeter
 
 
 def main():
@@ -38,7 +41,7 @@ def main():
     best_psnr = 0.0
     best_ssim = 0.0
 
-    train_prefetcher, test_prefetcher = load_dataset()
+    train_prefetcher, valid_prefetcher = load_dataset()
     print("Load all datasets successfully.")
 
     d_model, g_model, ema_g_model = build_model()
@@ -47,18 +50,13 @@ def main():
     pixel_criterion, content_criterion, adversarial_criterion = define_loss()
     print("Define all loss functions successfully.")
 
-    d_optimizer, g_optimizer = define_optimizer(d_model, g_model)
-    print("Define all optimizer functions successfully.")
-
-    d_scheduler, g_scheduler = define_scheduler(d_optimizer, g_optimizer)
-    print("Define all optimizer scheduler functions successfully.")
-
     print("Check whether to load pretrained d model weights...")
     if bsrgan_config.pretrained_d_model_weights_path:
         d_model = load_state_dict(d_model, bsrgan_config.pretrained_d_model_weights_path)
         print(f"Loaded `{bsrgan_config.pretrained_d_model_weights_path}` pretrained model weights successfully.")
     else:
         print("Pretrained d model weights not found.")
+
     print("Check whether to load pretrained g model weights...")
     if bsrgan_config.pretrained_g_model_weights_path:
         g_model = load_state_dict(g_model, bsrgan_config.pretrained_g_model_weights_path)
@@ -66,30 +64,11 @@ def main():
     else:
         print("Pretrained g model weights not found.")
 
-    print("Check whether the resume d model is restored...")
-    if bsrgan_config.resume_d_model_weights_path:
-        g_model, _, start_epoch, best_psnr, best_ssim, optimizer, scheduler = load_state_dict(
-            d_model,
-            bsrgan_config.resume_d_model_weights_path,
-            None,
-            d_optimizer,
-            d_scheduler,
-            "resume")
-        print("Loaded resume d model weights.")
-    else:
-        print("Resume training d model not found. Start training from scratch.")
-    print("Check whether the resume g model is restored...")
-    if bsrgan_config.resume_g_model_weights_path:
-        g_model, ema_g_model, start_epoch, best_psnr, best_ssim, optimizer, scheduler = load_state_dict(
-            g_model,
-            bsrgan_config.resume_g_model_weights_path,
-            ema_g_model,
-            g_optimizer,
-            g_scheduler,
-            "resume")
-        print("Loaded resume g model weights.")
-    else:
-        print("Resume training g model not found. Start training from scratch.")
+    d_optimizer, g_optimizer = define_optimizer(d_model, g_model)
+    print("Define all optimizer functions successfully.")
+
+    d_scheduler, g_scheduler = define_scheduler(d_optimizer, g_optimizer)
+    print("Define all optimizer scheduler functions successfully.")
 
     # Create a experiment results
     samples_dir = os.path.join("samples", bsrgan_config.exp_name)
@@ -106,11 +85,41 @@ def main():
     # Create an IQA evaluation model
     psnr_model = PSNR(bsrgan_config.upscale_factor, bsrgan_config.only_test_y_channel)
     ssim_model = SSIM(bsrgan_config.upscale_factor, bsrgan_config.only_test_y_channel)
+    niqe_model = NIQE(bsrgan_config.upscale_factor, bsrgan_config.niqe_model_path)
+    lpips_model = LPIPS(net=bsrgan_config.lpips_net)
+
+    # Transfer the IQA model to the specified device
     psnr_model = psnr_model.to(device=bsrgan_config.device)
     ssim_model = ssim_model.to(device=bsrgan_config.device)
+    niqe_model = niqe_model.to(device=bsrgan_config.device, non_blocking=True)
+    lpips_model = lpips_model.to(device=bsrgan_config.device, non_blocking=True)
+
+    best_lpips_metrics = 1.0
+
+
+    # Start MLFlow Tracking
+    try:
+        mlflow.set_experiment(bsrgan_config.experience_name)
+    except:
+        experiment_id= mlflow.create_experiment(bsrgan_config.experience_name)
+        print("New Experiment created with name: " + bsrgan_config.experience_name + " and ID: " + str(experiment_id))
+
+    # Start MLflow run & log parameters 
+    try:
+      mlflow.start_run(run_name=bsrgan_config.run_name, tags=bsrgan_config.tags, description=bsrgan_config.description)
+    except: # If last session was not ended
+      mlflow.end_run()
+      mlflow.start_run(run_name=bsrgan_config.run_name, tags=bsrgan_config.tags, description=bsrgan_config.description)
+    
+    run = mlflow.active_run()
+    print("Active run_id: {}".format(run.info.run_id))
+
+    mlflow.log_params({'exp_name':bsrgan_config.exp_name,'d_arch_name':bsrgan_config.d_model_arch_name,'g_arch_name':bsrgan_config.g_model_arch_name,'in_channels':bsrgan_config.in_channels,'out_channels':bsrgan_config.out_channels,'channels':bsrgan_config.channels,'growth_channels':bsrgan_config.growth_channels,'num_blocks':bsrgan_config.num_blocks,'upscale_factor':bsrgan_config.upscale_factor,'gt_image_size':bsrgan_config.gt_image_size,'batch_size':bsrgan_config.batch_size,'train_gt_images_dir':bsrgan_config.train_gt_images_dir,'valid_gt_images_dir':bsrgan_config.valid_gt_images_dir,
+                       'pretrained_d_model_weights_path':bsrgan_config.pretrained_d_model_weights_path,'pretrained_g_model_weights_path':bsrgan_config.pretrained_g_model_weights_path,'resume_d_model_weights_path':bsrgan_config.resume_d_model_weights_path,'resume_g_model_weights_path':bsrgan_config.resume_g_model_weights_path,'epochs':bsrgan_config.epochs,'pixel_weight':bsrgan_config.pixel_weight,'content_weight':bsrgan_config.content_weight,'adversarial_weight':bsrgan_config.adversarial_weight,'feature_model_extractor_node':bsrgan_config.feature_model_extractor_node,'feature_model_normalize_mean':bsrgan_config.feature_model_normalize_mean,'feature_model_normalize_std':bsrgan_config.feature_model_normalize_std,'model_lr':bsrgan_config.model_lr,'model_betas':bsrgan_config.model_betas,'model_eps':bsrgan_config.model_eps,'model_weight_decay':bsrgan_config.model_weight_decay,'model_ema_decay':bsrgan_config.model_ema_decay,'lr_scheduler_milestones':bsrgan_config.lr_scheduler_milestones,'lr_scheduler_gamma':bsrgan_config.lr_scheduler_gamma,'lpips_net':bsrgan_config.lpips_net,'niqe_model_path':bsrgan_config.niqe_model_path})
+
 
     for epoch in range(start_epoch, bsrgan_config.epochs):
-        train(d_model,
+        pixel_loss, content_loss, adversarial_loss, d_gt_probabilities, d_sr_probabilities = train(d_model,
               g_model,
               ema_g_model,
               train_prefetcher,
@@ -124,53 +133,54 @@ def main():
               writer,
               bsrgan_config.device,
               bsrgan_config.train_print_frequency)
-        psnr, ssim = validate(g_model,
+        psnr_val, ssim_val, niqe_val, lpips_val = validate(g_model,
                               test_prefetcher,
                               epoch,
                               writer,
                               psnr_model,
                               ssim_model,
+                              niqe_model,
+                              lpips_model,
                               bsrgan_config.device,
                               bsrgan_config.train_print_frequency,
-                              "Test")
+                              "Valid")
         print("\n")
+
+        log_epoch(pixel_loss, content_loss, adversarial_loss, d_gt_probabilities, d_sr_probabilities, psnr_val, ssim_val, niqe_val, lpips_val, epoch)
 
         # Update LR
         d_scheduler.step()
         g_scheduler.step()
 
-        # Automatically save the model with the highest index
-        is_best = psnr > best_psnr and ssim > best_ssim
-        is_last = (epoch + 1) == bsrgan_config.epochs
-        best_psnr = max(psnr, best_psnr)
-        best_ssim = max(ssim, best_ssim)
-        save_checkpoint({"epoch": epoch + 1,
-                         "best_psnr": best_psnr,
-                         "best_ssim": best_ssim,
-                         "state_dict": d_model.state_dict(),
-                         "optimizer": d_optimizer.state_dict(),
-                         "scheduler": d_scheduler.state_dict()},
-                        f"g_epoch_{epoch + 1}.pth.tar",
-                        samples_dir,
-                        results_dir,
-                        "d_best.pth.tar",
-                        "d_last.pth.tar",
-                        is_best,
-                        is_last)
-        save_checkpoint({"epoch": epoch + 1,
-                         "best_psnr": best_psnr,
-                         "best_ssim": best_ssim,
-                         "state_dict": g_model.state_dict(),
-                         "ema_state_dict": ema_g_model.state_dict(),
-                         "optimizer": g_optimizer.state_dict(),
-                         "scheduler": g_scheduler.state_dict()},
-                        f"g_epoch_{epoch + 1}.pth.tar",
-                        samples_dir,
-                        results_dir,
-                        "g_best.pth.tar",
-                        "g_last.pth.tar",
-                        is_best,
-                        is_last)
+        # Save the best model with the highest LPIPS score in validation dataset
+        is_best = lpips_val < best_lpips_metrics
+        best_lpips_metrics = min(lpips_val, best_lpips_metrics)
+
+        if is_best:
+          print("Saving best model...")
+          mlflow.pytorch.log_model(g_model, "g_model")
+          mlflow.pytorch.log_model(d_model, "d_model")
+          print("Finished Saving")
+        else:
+          print("Was not the best")
+
+    # End logging
+    mlflow.end_run()
+
+def log_epoch(g_pixel_loss, g_content_loss, g_adversarial_loss, d_gt_probabilities, d_sr_probabilities, psnr_val, ssim_val, niqe_val, lpips_val, epoch):
+    '''
+    g_pixel_loss, g_content_loss, g_adversarial_loss: train generator loss
+    d_gt_probabilities, d_sr_probabilities: descriminator probabilities
+    psnr, ssim, niqe, lpips: validation metrics
+    '''
+
+    print('\nLogging epoch data...')
+
+    g_train_loss = g_pixel_loss + g_content_loss + g_adversarial_loss
+
+    mlflow.log_metrics({'g_train_loss':g_train_loss, 'g_pixel_loss':g_pixel_loss, 'g_content_loss':g_content_loss, 'g_adversarial_loss':g_adversarial_loss, 'd_gt_probabilities':d_gt_probabilities, 'd_sr_probabilities':d_sr_probabilities, 'psnr_val':psnr_val, 'ssim_val':ssim_val, 'niqe_val':niqe_val, 'lpips_val':lpips_val}, step=epoch)
+
+    print('Finished Logging\n')
 
 
 def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
@@ -180,7 +190,13 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
                                             bsrgan_config.upscale_factor,
                                             "Train",
                                             bsrgan_config.degradation_process_parameters_dict)
-    test_datasets = TestImageDataset(bsrgan_config.test_gt_images_dir, bsrgan_config.test_lr_images_dir)
+    '''test_datasets = TestImageDataset(bsrgan_config.test_gt_images_dir, bsrgan_config.test_lr_images_dir)'''
+
+    valid_datasets = TrainValidImageDataset(bsrgan_config.valid_gt_images_dir,
+                                            bsrgan_config.crop_image_size,
+                                            bsrgan_config.upscale_factor,
+                                            "Valid",
+                                            bsrgan_config.degradation_process_parameters_dict)
 
     # Generator all dataloader
     train_dataloader = DataLoader(train_datasets,
@@ -190,7 +206,7 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
                                   pin_memory=True,
                                   drop_last=True,
                                   persistent_workers=True)
-    test_dataloader = DataLoader(test_datasets,
+    valid_dataloader = DataLoader(valid_datasets,
                                  batch_size=1,
                                  shuffle=False,
                                  num_workers=1,
@@ -200,9 +216,9 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
 
     # Place all data on the preprocessing data loader
     train_prefetcher = CUDAPrefetcher(train_dataloader, bsrgan_config.device)
-    test_prefetcher = CUDAPrefetcher(test_dataloader, bsrgan_config.device)
+    valid_prefetcher = CUDAPrefetcher(valid_dataloader, bsrgan_config.device)
 
-    return train_prefetcher, test_prefetcher
+    return train_prefetcher, valid_prefetcher
 
 
 def build_model() -> [nn.Module, nn.Module, nn.Module]:
@@ -316,6 +332,8 @@ def train(
 
     # Get the initialization training time
     end = time.time()
+
+    limit = 12
 
     while batch_data is not None:
         # Calculate the time it takes to load a batch of data
@@ -434,6 +452,107 @@ def train(
         # After training a batch of data, add 1 to the number of data batches to ensure that the
         # terminal print data normally
         batch_index += 1
+
+        if batch_index>limit:
+          print('Batch limit reached')
+          return pixel_losses.avg, content_losses.avg, adversarial_losses.avg, d_gt_probabilities.avg, d_sr_probabilities.avg
+    
+    return pixel_losses.avg, content_losses.avg, adversarial_losses.avg, d_gt_probabilities.avg, d_sr_probabilities.avg
+
+
+def validate(
+        bsrnet_model: nn.Module,
+        data_prefetcher: CUDAPrefetcher,
+        epoch: int,
+        writer: SummaryWriter,
+        psnr_model: nn.Module,
+        ssim_model: nn.Module,
+        niqe_model: nn.Module,
+        lpips_model: nn.Module,
+        mode: str = "Valid",
+) -> [float, float]:
+    # The information printed by the progress bar
+    batch_time = AverageMeter("Time", ":6.3f")
+    psnres = AverageMeter("PSNR", ":4.2f")
+    ssimes = AverageMeter("SSIM", ":4.4f")
+    niqees = AverageMeter("NIQE", ":4.2f")
+    lpipses = AverageMeter("LPIPS", ":4.4f")
+    progress = ProgressMeter(len(data_prefetcher), [batch_time, psnres, ssimes, niqees, lpipses], prefix=f"{mode}: ")
+
+    print_freq = 1
+    if mode == "Valid":
+      print_freq = bsrgan_config.valid_print_frequency
+    else:
+      print_freq = bsrgan_config.test_print_frequency
+
+    # Set the model as validation model
+    bsrnet_model.eval()
+
+    # Initialize data batches
+    batch_index = 0
+
+    limit = 20
+
+    # Set the data set iterator pointer to 0 and load the first batch of data
+    data_prefetcher.reset()
+    batch_data = data_prefetcher.next()
+
+    # Record the start time of verifying a batch
+    end = time.time()
+
+    # Disable gradient propagation
+    with torch.no_grad():
+        while batch_data is not None:
+            # Load batches of data
+            gt = batch_data["gt"].to(device=bsrgan_config.device, non_blocking=True)
+            lr = batch_data["lr"].to(device=bsrgan_config.device, non_blocking=True)
+
+            # inference
+            sr = bsrnet_model(lr)
+
+            # Calculate the image IQA
+            psnr = psnr_model(sr, gt)
+            ssim = ssim_model(sr, gt)
+            niqe = niqe_model(sr)
+            sr_tensor = 2*sr - 1 # Normalize from [0,1] to [-1,1]
+            gt_tensor = 2*gt - 1
+            lpips = lpips_model(sr, gt)
+
+            psnres.update(psnr.item(), lr.size(0))
+            ssimes.update(ssim.item(), lr.size(0))
+            niqees.update(niqe.item(), lr.size(0))
+            lpipses.update(lpips.item(), lr.size(0))
+
+            # Record the total time to verify a batch
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+            # Output a verification log information
+            if batch_index % print_frequency == 0:
+                progress.display(batch_index + 1)
+
+            # Preload the next batch of data
+            batch_data = data_prefetcher.next()
+
+            # Add 1 to the number of data batches
+            batch_index += 1
+
+            if batch_index > limit:
+              print("Limit reached")
+              break
+
+    # Print the performance index of the model at the current epoch
+    progress.display_summary()
+
+    if mode == "Valid" or mode == "Test":
+        writer.add_scalar(f"{mode}/PSNR", psnres.avg, epoch + 1)
+        writer.add_scalar(f"{mode}/SSIM", ssimes.avg, epoch + 1)
+        writer.add_scalar(f"{mode}/NIQE", niqees.avg, epoch + 1)
+        writer.add_scalar(f"{mode}/LPIPS", lpipses.avg, epoch + 1)
+    else:
+        raise ValueError("Unsupported mode, please use `Valid` or `Test`.")
+
+    return psnres.avg, ssimes.avg, niqees.avg, lpipses.avg
 
 
 if __name__ == "__main__":
