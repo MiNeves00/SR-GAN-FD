@@ -114,8 +114,8 @@ def main():
     run = mlflow.active_run()
     print("Active run_id: {}".format(run.info.run_id))
 
-    mlflow.log_params({'exp_name':bsrgan_config.exp_name,'d_arch_name':bsrgan_config.d_model_arch_name,'g_arch_name':bsrgan_config.g_model_arch_name,'in_channels':bsrgan_config.in_channels,'out_channels':bsrgan_config.out_channels,'channels':bsrgan_config.channels,'growth_channels':bsrgan_config.growth_channels,'num_blocks':bsrgan_config.num_blocks,'upscale_factor':bsrgan_config.upscale_factor,'gt_image_size':bsrgan_config.gt_image_size,'batch_size':bsrgan_config.batch_size,'train_gt_images_dir':bsrgan_config.train_gt_images_dir,'valid_gt_images_dir':bsrgan_config.valid_gt_images_dir,
-                       'pretrained_d_model_weights_path':bsrgan_config.pretrained_d_model_weights_path,'pretrained_g_model_weights_path':bsrgan_config.pretrained_g_model_weights_path,'resume_d_model_weights_path':bsrgan_config.resume_d_model_weights_path,'resume_g_model_weights_path':bsrgan_config.resume_g_model_weights_path,'epochs':bsrgan_config.epochs,'pixel_weight':bsrgan_config.pixel_weight,'content_weight':bsrgan_config.content_weight,'adversarial_weight':bsrgan_config.adversarial_weight,'feature_model_extractor_node':bsrgan_config.feature_model_extractor_node,'feature_model_normalize_mean':bsrgan_config.feature_model_normalize_mean,'feature_model_normalize_std':bsrgan_config.feature_model_normalize_std,'model_lr':bsrgan_config.model_lr,'model_betas':bsrgan_config.model_betas,'model_eps':bsrgan_config.model_eps,'model_weight_decay':bsrgan_config.model_weight_decay,'model_ema_decay':bsrgan_config.model_ema_decay,'lr_scheduler_milestones':bsrgan_config.lr_scheduler_milestones,'lr_scheduler_gamma':bsrgan_config.lr_scheduler_gamma,'lpips_net':bsrgan_config.lpips_net,'niqe_model_path':bsrgan_config.niqe_model_path})
+    mlflow.log_params({'exp_name':bsrgan_config.exp_name,'d_arch_name':bsrgan_config.d_model_arch_name,'g_arch_name':bsrgan_config.g_model_arch_name,'d_in_channels':bsrgan_config.d_in_channels,'d_out_channels':bsrgan_config.d_out_channels,'d_channels':bsrgan_config.d_channels,'g_in_channels':bsrgan_config.g_in_channels,'g_out_channels':bsrgan_config.g_out_channels,'g_channels':bsrgan_config.g_channels,'growth_channels':bsrgan_config.g_growth_channels,'num_blocks':bsrgan_config.g_num_rrdb,'upscale_factor':bsrgan_config.upscale_factor,'gt_image_size':bsrgan_config.gt_image_size,'batch_size':bsrgan_config.batch_size,'train_gt_images_dir':bsrgan_config.train_gt_images_dir,'valid_gt_images_dir':bsrgan_config.valid_gt_images_dir,
+                       'pretrained_d_model_weights_path':bsrgan_config.pretrained_d_model_weights_path,'pretrained_g_model_weights_path':bsrgan_config.pretrained_g_model_weights_path,'resume_d_model_weights_path':bsrgan_config.resume_d_model_weights_path,'resume_g_model_weights_path':bsrgan_config.resume_g_model_weights_path,'epochs':bsrgan_config.epochs,'pixel_weight':bsrgan_config.pixel_weight,'content_weight':bsrgan_config.content_weight,'adversarial_weight':bsrgan_config.adversarial_weight,'feature_model_extractor_nodes':bsrgan_config.feature_model_extractor_nodes,'feature_model_normalize_mean':bsrgan_config.feature_model_normalize_mean,'feature_model_normalize_std':bsrgan_config.feature_model_normalize_std,'model_lr':bsrgan_config.model_lr,'model_betas':bsrgan_config.model_betas,'model_eps':bsrgan_config.model_eps,'model_weight_decay':bsrgan_config.model_weight_decay,'model_ema_decay':bsrgan_config.model_ema_decay,'lr_scheduler_milestones':bsrgan_config.lr_scheduler_milestones,'lr_scheduler_gamma':bsrgan_config.lr_scheduler_gamma,'lpips_net':bsrgan_config.lpips_net,'niqe_model_path':bsrgan_config.niqe_model_path})
 
 
     for epoch in range(start_epoch, bsrgan_config.epochs):
@@ -134,15 +134,13 @@ def main():
               bsrgan_config.device,
               bsrgan_config.train_print_frequency)
         psnr_val, ssim_val, niqe_val, lpips_val = validate(g_model,
-                              test_prefetcher,
+                              valid_prefetcher,
                               epoch,
                               writer,
                               psnr_model,
                               ssim_model,
                               niqe_model,
                               lpips_model,
-                              bsrgan_config.device,
-                              bsrgan_config.train_print_frequency,
                               "Valid")
         print("\n")
 
@@ -207,9 +205,9 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
                                   drop_last=True,
                                   persistent_workers=True)
     valid_dataloader = DataLoader(valid_datasets,
-                                 batch_size=1,
+                                 batch_size=bsrgan_config.batch_size,
                                  shuffle=False,
-                                 num_workers=1,
+                                 num_workers=4,
                                  pin_memory=True,
                                  drop_last=False,
                                  persistent_workers=True)
@@ -333,7 +331,7 @@ def train(
     # Get the initialization training time
     end = time.time()
 
-    limit = 12
+    #limit = 12
 
     while batch_data is not None:
         # Calculate the time it takes to load a batch of data
@@ -453,9 +451,9 @@ def train(
         # terminal print data normally
         batch_index += 1
 
-        if batch_index>limit:
+        '''if batch_index>limit:
           print('Batch limit reached')
-          return pixel_losses.avg, content_losses.avg, adversarial_losses.avg, d_gt_probabilities.avg, d_sr_probabilities.avg
+          return pixel_losses.avg, content_losses.avg, adversarial_losses.avg, d_gt_probabilities.avg, d_sr_probabilities.avg'''
     
     return pixel_losses.avg, content_losses.avg, adversarial_losses.avg, d_gt_probabilities.avg, d_sr_probabilities.avg
 
@@ -491,7 +489,7 @@ def validate(
     # Initialize data batches
     batch_index = 0
 
-    limit = 20
+    #limit = 20
 
     # Set the data set iterator pointer to 0 and load the first batch of data
     data_prefetcher.reset()
@@ -528,7 +526,7 @@ def validate(
             end = time.time()
 
             # Output a verification log information
-            if batch_index % print_frequency == 0:
+            if batch_index % print_freq == 0:
                 progress.display(batch_index + 1)
 
             # Preload the next batch of data
@@ -537,9 +535,9 @@ def validate(
             # Add 1 to the number of data batches
             batch_index += 1
 
-            if batch_index > limit:
+            '''if batch_index > limit:
               print("Limit reached")
-              break
+              break'''
 
     # Print the performance index of the model at the current epoch
     progress.display_summary()

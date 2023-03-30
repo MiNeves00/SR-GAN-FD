@@ -61,7 +61,7 @@ class TrainValidImageDataset(Dataset):
         # Define degradation process parameters
         self.degradation_process_parameters_dict = degradation_process_parameters_dict
 
-    def __getitem__(self, batch_index: int) -> [dict[str, Tensor], dict[str, Tensor]]:
+    def __getitem__(self, batch_index: int):
         # Read a batch of image data
         gt_image = cv2.imread(self.gt_image_file_names[batch_index]).astype(np.float32) / 255.
 

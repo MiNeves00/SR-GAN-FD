@@ -127,6 +127,9 @@ if mode == "test":
     #gt_image_size = 480 # bubbles
     #lr_dir = f"./data/Bubbles/bubblesLR"
     #sr_dir = f"./data/Bubbles/testSR"
+
+    save_images = True
+
     gt_dir = f"../data/Bubbles/test"
 
     #g_model_weights_path = "./results/pretrained_models/ESRGAN_x4-DFO2K-25393df7.pth.tar"

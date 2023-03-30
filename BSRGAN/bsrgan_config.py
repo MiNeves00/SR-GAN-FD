@@ -60,16 +60,16 @@ g_num_rrdb = 23
 # Upscale factor
 upscale_factor = 4
 # Current configuration parameter method
-mode = "train"
+mode = "test"
 # Experiment name, easy to save weights and log files
 exp_name = "BSRGAN_x4-DIV2K_bubbles"
 
 # MLflow
 experience_name = 'BSRGAN_x4_bubbles' # each name is associated with unique id
-run_name = 'bsrgan_bubbles_1epoch'
-run_id = '' # used to resume runs
+run_name = 'bsrgan_bubbles_5epochs'
+run_id = '26979e2e8ee44b779afba4980c85b683' # used to resume runs
 tags = ''
-description = 'BSRGAN base model trained on 1 epochs on the Bubble dataset'
+description = 'BSRGAN base model trained on 5 epochs on the Bubble dataset'
 
 if mode == "train":
     print("Train")
@@ -97,7 +97,7 @@ if mode == "train":
     resume_g_model_weights_path = ""
 
     # Total num epochs (1,600,000 iters)
-    epochs = 1
+    epochs = 5
     print("Total Epochs -> "+str(epochs))
 
     # Feature extraction layer parameter configuration
@@ -130,7 +130,13 @@ if mode == "train":
 if mode == "test":
     print("Test")
     # Test data address
-    lr_dir = "./data/RealSRSet"
-    sr_dir = f"./results/{exp_name}"
+    #lr_dir = "./data/RealSRSet"
+    #sr_dir = f"./results/{exp_name}"
 
-    g_model_weights_path = "./results/pretrained_models/BSRGAN/BSRGAN_x4-DIV2K-6d507222.pth.tar"
+    batch_size = 2
+
+    save_images = True
+
+    gt_dir = f"../data/Bubbles/test"
+
+    g_model_weights_path = f"./mlruns/483786844391901615/"+run_id+"/artifacts/g_model"

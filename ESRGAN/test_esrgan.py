@@ -31,7 +31,6 @@ model_names = sorted(
     name for name in model.__dict__ if
     name.islower() and not name.startswith("__") and callable(model.__dict__[name]))
 
-save_images = True
 
 
 def main() -> None:
@@ -65,14 +64,14 @@ def main() -> None:
     test_prefetcher.reset()
 
 
-
+  '''
     # Initialize the super-resolution bsrgan_model
     esrgan_model = model.__dict__[esrgan_config.g_arch_name](in_channels=esrgan_config.in_channels,
                                                              out_channels=esrgan_config.out_channels,
                                                              channels=esrgan_config.channels,
                                                              growth_channels=esrgan_config.growth_channels,
                                                              num_blocks=esrgan_config.num_blocks)
-    '''
+    
     esrgan_model = esrgan_model.to(device=esrgan_config.device)
     print(f"Build `{esrgan_config.g_arch_name}` model successfully.")
 
@@ -144,7 +143,7 @@ def main() -> None:
             sr_tensor = esrgan_model(lr_tensor)
 
         # Save image
-        if save_images:
+        if esrgan_config.save_images:
           sr_image = imgproc.tensor_to_image(sr_tensor, False, False)
           sr_image = cv2.cvtColor(sr_image, cv2.COLOR_RGB2BGR)
           mlflow.log_image(sr_image, pathTest+file_names[index])
