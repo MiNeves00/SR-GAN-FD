@@ -46,7 +46,7 @@ niqe_model_path = "./results/pretrained_models/niqe_model.mat"
 lpips_net = 'alex'
 # Model architecture name
 d_model_arch_name = "discriminator_unet"
-g_model_arch_name = "bsrgan_x4"
+g_model_arch_name = "bsrgan_x2"
 # DiscriminatorUNet configure
 d_in_channels = 3
 d_out_channels = 1
@@ -58,18 +58,18 @@ g_channels = 64
 g_growth_channels = 32
 g_num_rrdb = 23
 # Upscale factor
-upscale_factor = 4
+upscale_factor = 2
 # Current configuration parameter method
-mode = "test"
+mode = "train"
 # Experiment name, easy to save weights and log files
-exp_name = "BSRGAN_x4-DIV2K_bubbles"
+exp_name = "BSRGAN_x2-DIV2K_bubbles"
 
 # MLflow
-experience_name = 'BSRGAN_x4_bubbles' # each name is associated with unique id
-run_name = 'bsrgan_bubbles_5epochs'
-run_id = '26979e2e8ee44b779afba4980c85b683' # used to resume runs
+experience_name = 'BSRGAN_x2_bubbles' # each name is associated with unique id
+run_name = 'bsrgan_bubbles_10epochs_real-discriminator_psnr'
+run_id = '' # used to resume runs
 tags = ''
-description = 'BSRGAN base model trained on 5 epochs on the Bubble dataset'
+description = 'BSRGAN upscale 2 base model with Real-ESRGAN discriminator trained on 10 epochs on the Bubble dataset. More focus on content loss since the model was already pretrained on 5 epochs in PSNR-oriented.'
 
 if mode == "train":
     print("Train")
@@ -86,18 +86,20 @@ if mode == "train":
     crop_image_size = 320
     gt_image_size = int(72 * upscale_factor)
     batch_size = 16
-    num_workers = 4
+    num_workers = 1
 
     # Load the address of the pretrained model
-    pretrained_d_model_weights_path = ""
-    pretrained_g_model_weights_path = "./results/pretrained_models/BSRGAN/BSRGAN_x4-DIV2K-6d507222.pth.tar"
+    pretrained_d_model_weights_path = "./results/pretrained_models/Real-ESRGAN/Discriminator_x2-DFO2K-e37ff529.pth.tar"
+    #pretrained_d_model_weights_path = "./mlruns/815542563266978794/958ef59a1ce247ca903f25df03d937e1/artifacts/best_d_model/data/model.pth"
+    pretrained_g_model_weights_path = "./results/pretrained_models/BSRGAN/BSRGAN_x2-DIV2K-62958d37.pth.tar"
+    #pretrained_g_model_weights_path = "./mlruns/815542563266978794/958ef59a1ce247ca903f25df03d937e1/artifacts/best_g_model/data/model.pth"
 
     # Incremental training and migration training
     resume_d_model_weights_path = ""
     resume_g_model_weights_path = ""
 
     # Total num epochs (1,600,000 iters)
-    epochs = 5
+    epochs = 10
     print("Total Epochs -> "+str(epochs))
 
     # Feature extraction layer parameter configuration
@@ -106,12 +108,16 @@ if mode == "train":
     feature_model_normalize_std = [0.229, 0.224, 0.225]
 
     # Loss function weight
-    pixel_weight = [1.0]
-    content_weight = [0.1, 0.1, 1.0, 1.0, 1.0]
+    #pixel_weight = [1.0]
+    pixel_weight = [5.0]
+    #content_weight = [0.1, 0.1, 1.0, 1.0, 1.0]
+    content_weight = [1.0]
+    #adversarial_weight = [0.1]
     adversarial_weight = [0.1]
 
     # Optimizer parameter
-    model_lr = 5e-5
+    #model_lr = 5e-5
+    model_lr = 8e-5
     model_betas = (0.9, 0.999)
     model_eps = 1e-4  # Keep no nan
     model_weight_decay = 0.0
@@ -120,12 +126,13 @@ if mode == "train":
     model_ema_decay = 0.999
 
     # Dynamically adjust the learning rate policy
-    lr_scheduler_milestones = [int(epochs * 0.5)]
-    lr_scheduler_gamma = 0.5
+    lr_scheduler_milestones = [int(epochs * 0.3),int(epochs * 0.5),int(epochs * 0.8)]
+    #lr_scheduler_gamma = 0.5
+    lr_scheduler_gamma = 0.7
 
     # How many iterations to print the training result
-    train_print_frequency = 100
-    valid_print_frequency = 100
+    train_print_frequency = 50
+    valid_print_frequency = 200
 
 if mode == "test":
     print("Test")
@@ -139,4 +146,4 @@ if mode == "test":
 
     gt_dir = f"../data/Bubbles/test"
 
-    g_model_weights_path = f"./mlruns/483786844391901615/"+run_id+"/artifacts/g_model"
+    g_model_weights_path = f"./mlruns/815542563266978794/"+run_id+"/artifacts/best_g_model"

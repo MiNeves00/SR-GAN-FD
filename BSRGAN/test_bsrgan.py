@@ -100,6 +100,8 @@ def main() -> None:
     pathLR = "testImagesLR/"
     pathTest = "testImages/"
 
+    print("Starting tests...")
+
     for index in range(total_files):
 
         batch_data = test_prefetcher.next()

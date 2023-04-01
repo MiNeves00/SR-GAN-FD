@@ -94,7 +94,6 @@ def main():
     niqe_model = niqe_model.to(device=bsrgan_config.device, non_blocking=True)
     lpips_model = lpips_model.to(device=bsrgan_config.device, non_blocking=True)
 
-    best_lpips_metrics = 1.0
 
 
     # Start MLFlow Tracking
@@ -117,6 +116,7 @@ def main():
     mlflow.log_params({'exp_name':bsrgan_config.exp_name,'d_arch_name':bsrgan_config.d_model_arch_name,'g_arch_name':bsrgan_config.g_model_arch_name,'d_in_channels':bsrgan_config.d_in_channels,'d_out_channels':bsrgan_config.d_out_channels,'d_channels':bsrgan_config.d_channels,'g_in_channels':bsrgan_config.g_in_channels,'g_out_channels':bsrgan_config.g_out_channels,'g_channels':bsrgan_config.g_channels,'growth_channels':bsrgan_config.g_growth_channels,'num_blocks':bsrgan_config.g_num_rrdb,'upscale_factor':bsrgan_config.upscale_factor,'gt_image_size':bsrgan_config.gt_image_size,'batch_size':bsrgan_config.batch_size,'train_gt_images_dir':bsrgan_config.train_gt_images_dir,'valid_gt_images_dir':bsrgan_config.valid_gt_images_dir,
                        'pretrained_d_model_weights_path':bsrgan_config.pretrained_d_model_weights_path,'pretrained_g_model_weights_path':bsrgan_config.pretrained_g_model_weights_path,'resume_d_model_weights_path':bsrgan_config.resume_d_model_weights_path,'resume_g_model_weights_path':bsrgan_config.resume_g_model_weights_path,'epochs':bsrgan_config.epochs,'pixel_weight':bsrgan_config.pixel_weight,'content_weight':bsrgan_config.content_weight,'adversarial_weight':bsrgan_config.adversarial_weight,'feature_model_extractor_nodes':bsrgan_config.feature_model_extractor_nodes,'feature_model_normalize_mean':bsrgan_config.feature_model_normalize_mean,'feature_model_normalize_std':bsrgan_config.feature_model_normalize_std,'model_lr':bsrgan_config.model_lr,'model_betas':bsrgan_config.model_betas,'model_eps':bsrgan_config.model_eps,'model_weight_decay':bsrgan_config.model_weight_decay,'model_ema_decay':bsrgan_config.model_ema_decay,'lr_scheduler_milestones':bsrgan_config.lr_scheduler_milestones,'lr_scheduler_gamma':bsrgan_config.lr_scheduler_gamma,'lpips_net':bsrgan_config.lpips_net,'niqe_model_path':bsrgan_config.niqe_model_path})
 
+    best_decision_metric = 1.0
 
     for epoch in range(start_epoch, bsrgan_config.epochs):
         pixel_loss, content_loss, adversarial_loss, d_gt_probabilities, d_sr_probabilities = train(d_model,
@@ -151,16 +151,23 @@ def main():
         g_scheduler.step()
 
         # Save the best model with the highest LPIPS score in validation dataset
-        is_best = lpips_val < best_lpips_metrics
-        best_lpips_metrics = min(lpips_val, best_lpips_metrics)
+        print("Deciding based on PSNR value...")
+        decision_metric = psnr_val
+        is_best = decision_metric > best_decision_metric
+        best_decision_metric = max(decision_metric, best_decision_metric)
 
         if is_best:
           print("Saving best model...")
-          mlflow.pytorch.log_model(g_model, "g_model")
-          mlflow.pytorch.log_model(d_model, "d_model")
+          mlflow.pytorch.log_model(g_model, "best_g_model")
+          mlflow.pytorch.log_model(d_model, "best_d_model")
           print("Finished Saving")
         else:
           print("Was not the best")
+
+        print("Saving last model...")
+        mlflow.pytorch.log_model(g_model, "last_g_model")
+        mlflow.pytorch.log_model(d_model, "last_d_model")
+        print("Finished Saving")
 
     # End logging
     mlflow.end_run()
@@ -205,9 +212,9 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
                                   drop_last=True,
                                   persistent_workers=True)
     valid_dataloader = DataLoader(valid_datasets,
-                                 batch_size=bsrgan_config.batch_size,
+                                 batch_size=1,
                                  shuffle=False,
-                                 num_workers=4,
+                                 num_workers=1,
                                  pin_memory=True,
                                  drop_last=False,
                                  persistent_workers=True)
