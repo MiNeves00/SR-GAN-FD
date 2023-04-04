@@ -153,10 +153,10 @@ def main():
         g_scheduler.step()
 
         # Save the best model with the highest LPIPS score in validation dataset
-        print("Deciding based on PSNR value...")
-        decision_metric = psnr_val
-        is_best = decision_metric > best_decision_metric
-        best_decision_metric = max(decision_metric, best_decision_metric)
+        print("Deciding based on LPIPS value...")
+        decision_metric = lpips_val
+        is_best = decision_metric < best_decision_metric
+        best_decision_metric = min(decision_metric, best_decision_metric)
 
         if is_best:
           print("Saving best model...")

@@ -60,16 +60,16 @@ g_num_rrdb = 23
 # Upscale factor
 upscale_factor = 2
 # Current configuration parameter method
-mode = "train"
+mode = "test"
 # Experiment name, easy to save weights and log files
-exp_name = "BSRGAN_x2-DIV2K_bubbles"
+exp_name = "BSRGAN_x2-DIV2K_degradations"
 
 # MLflow
 experience_name = 'BSRGAN_x2_bubbles' # each name is associated with unique id
-run_name = 'bsrgan_bubbles_100epochs_scratch_psnr'
-run_id = '' # used to resume runs
+run_name = 'bsrgan_bubbles_100epochs_scratch_continue_LPIPS'
+run_id = 'ff8f2907191f49eeab4b2560b3977025' # used to resume runs
 tags = ''
-description = 'BSRGAN upscale 2 base model trained on 100 epochs on the Bubble dataset from scratch. Focus on PSNR.'
+description = 'BSRGAN upscale 2 base model trained on 100 epochs on the Bubble dataset from scratch. Focus on LPIPS with bigger adversarial and content loss and smaller pixel loss.'
 
 if mode == "train":
     print("Train")
@@ -89,10 +89,12 @@ if mode == "train":
     num_workers = 1
 
     # Load the address of the pretrained model
+    #pretrained_d_model_weights_path = ""
+    #pretrained_g_model_weights_path = ""
     #pretrained_d_model_weights_path = "./results/pretrained_models/Real-ESRGAN/Discriminator_x2-DFO2K-e37ff529.pth.tar"
-    #pretrained_d_model_weights_path = "./mlruns/815542563266978794/958ef59a1ce247ca903f25df03d937e1/artifacts/best_d_model"
+    pretrained_d_model_weights_path = "./mlruns/815542563266978794/e9cfef160a7e477a95c0ce0f9893fea9/artifacts/best_d_model"
     #pretrained_g_model_weights_path = "./results/pretrained_models/BSRGAN/BSRGAN_x2-DIV2K-62958d37.pth.tar"
-    #pretrained_g_model_weights_path = "./mlruns/815542563266978794/958ef59a1ce247ca903f25df03d937e1/artifacts/best_g_model"
+    pretrained_g_model_weights_path = "./mlruns/815542563266978794/e9cfef160a7e477a95c0ce0f9893fea9/artifacts/best_g_model"
 
     # Incremental training and migration training
     resume_d_model_weights_path = ""
@@ -109,15 +111,15 @@ if mode == "train":
 
     # Loss function weight
     #pixel_weight = [1.0]
-    pixel_weight = [20.0]
+    pixel_weight = [15.0]
     #content_weight = [0.1, 0.1, 1.0, 1.0, 1.0]
-    content_weight = [0.01]
+    content_weight = [0.2]
     #adversarial_weight = [0.1]
-    adversarial_weight = [0.01]
+    adversarial_weight = [1.0]
 
     # Optimizer parameter
     #model_lr = 5e-5
-    model_lr = 5e-4
+    model_lr = 2e-4
     model_betas = (0.9, 0.999)
     model_eps = 1e-4  # Keep no nan
     model_weight_decay = 0.0
