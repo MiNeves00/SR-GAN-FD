@@ -52,14 +52,16 @@ def main():
 
     print("Check whether to load pretrained d model weights...")
     if bsrgan_config.pretrained_d_model_weights_path:
-        d_model = load_state_dict(d_model, bsrgan_config.pretrained_d_model_weights_path)
+        d_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_d_model_weights_path)
+        #d_model = load_state_dict(d_model, bsrgan_config.pretrained_d_model_weights_path)
         print(f"Loaded `{bsrgan_config.pretrained_d_model_weights_path}` pretrained model weights successfully.")
     else:
         print("Pretrained d model weights not found.")
 
     print("Check whether to load pretrained g model weights...")
     if bsrgan_config.pretrained_g_model_weights_path:
-        g_model = load_state_dict(g_model, bsrgan_config.pretrained_g_model_weights_path)
+        g_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_g_model_weights_path)
+        #g_model = load_state_dict(g_model, bsrgan_config.pretrained_g_model_weights_path)
         print(f"Loaded `{bsrgan_config.pretrained_g_model_weights_path}` pretrained model weights successfully.")
     else:
         print("Pretrained g model weights not found.")
@@ -481,7 +483,7 @@ def validate(
     psnres = AverageMeter("PSNR", ":4.2f")
     ssimes = AverageMeter("SSIM", ":4.4f")
     niqees = AverageMeter("NIQE", ":4.2f")
-    lpipses = AverageMeter("LPIPS", ":4.4f")
+    lpipses = AverageMeter("LPIPS", ":6.4f")
     progress = ProgressMeter(len(data_prefetcher), [batch_time, psnres, ssimes, niqees, lpipses], prefix=f"{mode}: ")
 
     print_freq = 1

@@ -66,10 +66,10 @@ exp_name = "BSRGAN_x2-DIV2K_bubbles"
 
 # MLflow
 experience_name = 'BSRGAN_x2_bubbles' # each name is associated with unique id
-run_name = 'bsrgan_bubbles_10epochs_real-discriminator_psnr'
+run_name = 'bsrgan_bubbles_100epochs_scratch_psnr'
 run_id = '' # used to resume runs
 tags = ''
-description = 'BSRGAN upscale 2 base model with Real-ESRGAN discriminator trained on 10 epochs on the Bubble dataset. More focus on content loss since the model was already pretrained on 5 epochs in PSNR-oriented.'
+description = 'BSRGAN upscale 2 base model trained on 100 epochs on the Bubble dataset from scratch. Focus on PSNR.'
 
 if mode == "train":
     print("Train")
@@ -89,17 +89,17 @@ if mode == "train":
     num_workers = 1
 
     # Load the address of the pretrained model
-    pretrained_d_model_weights_path = "./results/pretrained_models/Real-ESRGAN/Discriminator_x2-DFO2K-e37ff529.pth.tar"
-    #pretrained_d_model_weights_path = "./mlruns/815542563266978794/958ef59a1ce247ca903f25df03d937e1/artifacts/best_d_model/data/model.pth"
-    pretrained_g_model_weights_path = "./results/pretrained_models/BSRGAN/BSRGAN_x2-DIV2K-62958d37.pth.tar"
-    #pretrained_g_model_weights_path = "./mlruns/815542563266978794/958ef59a1ce247ca903f25df03d937e1/artifacts/best_g_model/data/model.pth"
+    #pretrained_d_model_weights_path = "./results/pretrained_models/Real-ESRGAN/Discriminator_x2-DFO2K-e37ff529.pth.tar"
+    #pretrained_d_model_weights_path = "./mlruns/815542563266978794/958ef59a1ce247ca903f25df03d937e1/artifacts/best_d_model"
+    #pretrained_g_model_weights_path = "./results/pretrained_models/BSRGAN/BSRGAN_x2-DIV2K-62958d37.pth.tar"
+    #pretrained_g_model_weights_path = "./mlruns/815542563266978794/958ef59a1ce247ca903f25df03d937e1/artifacts/best_g_model"
 
     # Incremental training and migration training
     resume_d_model_weights_path = ""
     resume_g_model_weights_path = ""
 
     # Total num epochs (1,600,000 iters)
-    epochs = 10
+    epochs = 100
     print("Total Epochs -> "+str(epochs))
 
     # Feature extraction layer parameter configuration
@@ -109,15 +109,15 @@ if mode == "train":
 
     # Loss function weight
     #pixel_weight = [1.0]
-    pixel_weight = [5.0]
+    pixel_weight = [20.0]
     #content_weight = [0.1, 0.1, 1.0, 1.0, 1.0]
-    content_weight = [1.0]
+    content_weight = [0.01]
     #adversarial_weight = [0.1]
-    adversarial_weight = [0.1]
+    adversarial_weight = [0.01]
 
     # Optimizer parameter
     #model_lr = 5e-5
-    model_lr = 8e-5
+    model_lr = 5e-4
     model_betas = (0.9, 0.999)
     model_eps = 1e-4  # Keep no nan
     model_weight_decay = 0.0
@@ -139,8 +139,6 @@ if mode == "test":
     # Test data address
     #lr_dir = "./data/RealSRSet"
     #sr_dir = f"./results/{exp_name}"
-
-    batch_size = 2
 
     save_images = True
 
