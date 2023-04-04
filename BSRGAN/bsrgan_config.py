@@ -66,10 +66,10 @@ exp_name = "BSRGAN_x2-DIV2K_degradations"
 
 # MLflow
 experience_name = 'BSRGAN_x2_bubbles' # each name is associated with unique id
-run_name = 'bsrgan_bubbles_100epochs_scratch_continue_LPIPS'
-run_id = 'ff8f2907191f49eeab4b2560b3977025' # used to resume runs
+run_name = 'bsrgan_bubbles_degradations_normal'
+run_id = '' # used to resume runs
 tags = ''
-description = 'BSRGAN upscale 2 base model trained on 100 epochs on the Bubble dataset from scratch. Focus on LPIPS with bigger adversarial and content loss and smaller pixel loss.'
+description = 'BSRGAN upscale 2 degradation function with default params'
 
 if mode == "train":
     print("Train")
@@ -143,6 +143,7 @@ if mode == "test":
     #sr_dir = f"./results/{exp_name}"
 
     save_images = True
+    test_only_degradations = True
 
     gt_dir = f"../data/Bubbles/test"
 
