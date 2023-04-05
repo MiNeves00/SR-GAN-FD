@@ -52,16 +52,20 @@ def main():
 
     print("Check whether to load pretrained d model weights...")
     if bsrgan_config.pretrained_d_model_weights_path:
-        #d_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_d_model_weights_path)
-        d_model = load_state_dict(d_model, bsrgan_config.pretrained_d_model_weights_path)
+        if bsrgan_config.loadsFromMlrun:
+            d_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_d_model_weights_path)
+        else:
+            d_model = load_state_dict(d_model, bsrgan_config.pretrained_d_model_weights_path)
         print(f"Loaded `{bsrgan_config.pretrained_d_model_weights_path}` pretrained model weights successfully.")
     else:
         print("Pretrained d model weights not found.")
 
     print("Check whether to load pretrained g model weights...")
     if bsrgan_config.pretrained_g_model_weights_path:
-        #g_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_g_model_weights_path)
-        g_model = load_state_dict(g_model, bsrgan_config.pretrained_g_model_weights_path)
+        if bsrgan_config.loadsFromMlrun:
+            g_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_g_model_weights_path)
+        else:
+            g_model = load_state_dict(g_model, bsrgan_config.pretrained_g_model_weights_path)
         print(f"Loaded `{bsrgan_config.pretrained_g_model_weights_path}` pretrained model weights successfully.")
     else:
         print("Pretrained g model weights not found.")
@@ -153,10 +157,18 @@ def main():
         g_scheduler.step()
 
         # Save the best model with the highest LPIPS score in validation dataset
-        print("Deciding based on PSNR value...")
-        decision_metric = psnr_val
-        is_best = decision_metric > best_decision_metric
-        best_decision_metric = max(decision_metric, best_decision_metric)
+        print("Deciding based on "+bsrgan_config.optimizing_metric+" value...")
+        if bsrgan_config.optimizing_metric == "LPIPS":
+            decision_metric = lpips_val
+            is_best = decision_metric < best_decision_metric
+            best_decision_metric = min(decision_metric, best_decision_metric)
+        elif bsrgan_config.optimizing_metric == "PSNR":
+            decision_metric = psnr_val
+            is_best = decision_metric > best_decision_metric
+            best_decision_metric = max(decision_metric, best_decision_metric)
+        else:
+            print("Optimizing metric is inadaquate: "+bsrgan_config.optimizing_metric)
+            exit()
 
         if is_best:
           print("Saving best model...")

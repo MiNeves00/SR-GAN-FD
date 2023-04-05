@@ -60,16 +60,18 @@ g_num_rrdb = 23
 # Upscale factor
 upscale_factor = 2
 # Current configuration parameter method
-mode = "test"
+mode = "train"
+optimizing_metric = "LPIPS"
+loadsFromMlrun = True
 # Experiment name, easy to save weights and log files
 exp_name = "BSRGAN_x2-DIV2K_degradations"
 
 # MLflow
 experience_name = 'BSRGAN_x2_bubbles' # each name is associated with unique id
-run_name = 'bsrgan_bubbles_10epochs_psnr_degradations_normal'
-run_id = '803fa4c4bdad488bbd2a72649585de2c' # used to resume runs
+run_name = 'bsrgan_bubbles_10epochs_psnr_degradations_normal_followedby_lpips'
+run_id = '' # used to resume runs
 tags = ''
-description = 'BSRGAN upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. Focus on PSNR, 10 epochs'
+description = 'BSRGAN upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. Focus on LPIPS, 10 epochs. Was previously trained on PSNR id=803fa4c4bdad488bbd2a72649585de2c'
 
 if mode == "train":
     print("Train")
@@ -91,10 +93,16 @@ if mode == "train":
     # Load the address of the pretrained model
     #pretrained_d_model_weights_path = ""
     #pretrained_g_model_weights_path = ""
-    pretrained_d_model_weights_path = "./results/pretrained_models/Real-ESRGAN/Discriminator_x2-DFO2K-e37ff529.pth.tar"
-    #pretrained_d_model_weights_path = "./mlruns/815542563266978794/e9cfef160a7e477a95c0ce0f9893fea9/artifacts/best_d_model"
-    pretrained_g_model_weights_path = "./results/pretrained_models/BSRGAN/BSRGAN_x2-DIV2K-62958d37.pth.tar"
-    #pretrained_g_model_weights_path = "./mlruns/815542563266978794/e9cfef160a7e477a95c0ce0f9893fea9/artifacts/best_g_model"
+
+    if loadsFromMlrun:
+        print("Loading Mlrun models...")
+        pretrained_d_model_weights_path = "./mlruns/815542563266978794/803fa4c4bdad488bbd2a72649585de2c/artifacts/best_d_model"
+        pretrained_g_model_weights_path = "./mlruns/815542563266978794/803fa4c4bdad488bbd2a72649585de2c/artifacts/best_g_model"
+    else:
+        print("Loading basic pretrained models...")
+        pretrained_d_model_weights_path = "./results/pretrained_models/Real-ESRGAN/Discriminator_x2-DFO2K-e37ff529.pth.tar"
+
+        pretrained_g_model_weights_path = "./results/pretrained_models/BSRGAN/BSRGAN_x2-DIV2K-62958d37.pth.tar"
 
     # Incremental training and migration training
     resume_d_model_weights_path = ""
@@ -111,15 +119,15 @@ if mode == "train":
 
     # Loss function weight
     #pixel_weight = [1.0]
-    pixel_weight = [40.0]
+    pixel_weight = [10.0]
     #content_weight = [0.1, 0.1, 1.0, 1.0, 1.0]
-    content_weight = [0.1]
+    content_weight = [1.0]
     #adversarial_weight = [0.1]
-    adversarial_weight = [0.1]
+    adversarial_weight = [1.0]
 
     # Optimizer parameter
     #model_lr = 5e-5
-    model_lr = 1e-4
+    model_lr = 8e-5
     model_betas = (0.9, 0.999)
     model_eps = 1e-4  # Keep no nan
     model_weight_decay = 0.0
