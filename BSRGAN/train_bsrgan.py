@@ -52,16 +52,16 @@ def main():
 
     print("Check whether to load pretrained d model weights...")
     if bsrgan_config.pretrained_d_model_weights_path:
-        d_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_d_model_weights_path)
-        #d_model = load_state_dict(d_model, bsrgan_config.pretrained_d_model_weights_path)
+        #d_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_d_model_weights_path)
+        d_model = load_state_dict(d_model, bsrgan_config.pretrained_d_model_weights_path)
         print(f"Loaded `{bsrgan_config.pretrained_d_model_weights_path}` pretrained model weights successfully.")
     else:
         print("Pretrained d model weights not found.")
 
     print("Check whether to load pretrained g model weights...")
     if bsrgan_config.pretrained_g_model_weights_path:
-        g_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_g_model_weights_path)
-        #g_model = load_state_dict(g_model, bsrgan_config.pretrained_g_model_weights_path)
+        #g_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_g_model_weights_path)
+        g_model = load_state_dict(g_model, bsrgan_config.pretrained_g_model_weights_path)
         print(f"Loaded `{bsrgan_config.pretrained_g_model_weights_path}` pretrained model weights successfully.")
     else:
         print("Pretrained g model weights not found.")
@@ -153,10 +153,10 @@ def main():
         g_scheduler.step()
 
         # Save the best model with the highest LPIPS score in validation dataset
-        print("Deciding based on LPIPS value...")
-        decision_metric = lpips_val
-        is_best = decision_metric < best_decision_metric
-        best_decision_metric = min(decision_metric, best_decision_metric)
+        print("Deciding based on PSNR value...")
+        decision_metric = psnr_val
+        is_best = decision_metric > best_decision_metric
+        best_decision_metric = max(decision_metric, best_decision_metric)
 
         if is_best:
           print("Saving best model...")

@@ -66,10 +66,10 @@ exp_name = "BSRGAN_x2-DIV2K_degradations"
 
 # MLflow
 experience_name = 'BSRGAN_x2_bubbles' # each name is associated with unique id
-run_name = 'bsrgan_bubbles_degradations_normal'
-run_id = '' # used to resume runs
+run_name = 'bsrgan_bubbles_10epochs_psnr_degradations_normal'
+run_id = '803fa4c4bdad488bbd2a72649585de2c' # used to resume runs
 tags = ''
-description = 'BSRGAN upscale 2 degradation function with default params'
+description = 'BSRGAN upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. Focus on PSNR, 10 epochs'
 
 if mode == "train":
     print("Train")
@@ -91,17 +91,17 @@ if mode == "train":
     # Load the address of the pretrained model
     #pretrained_d_model_weights_path = ""
     #pretrained_g_model_weights_path = ""
-    #pretrained_d_model_weights_path = "./results/pretrained_models/Real-ESRGAN/Discriminator_x2-DFO2K-e37ff529.pth.tar"
-    pretrained_d_model_weights_path = "./mlruns/815542563266978794/e9cfef160a7e477a95c0ce0f9893fea9/artifacts/best_d_model"
-    #pretrained_g_model_weights_path = "./results/pretrained_models/BSRGAN/BSRGAN_x2-DIV2K-62958d37.pth.tar"
-    pretrained_g_model_weights_path = "./mlruns/815542563266978794/e9cfef160a7e477a95c0ce0f9893fea9/artifacts/best_g_model"
+    pretrained_d_model_weights_path = "./results/pretrained_models/Real-ESRGAN/Discriminator_x2-DFO2K-e37ff529.pth.tar"
+    #pretrained_d_model_weights_path = "./mlruns/815542563266978794/e9cfef160a7e477a95c0ce0f9893fea9/artifacts/best_d_model"
+    pretrained_g_model_weights_path = "./results/pretrained_models/BSRGAN/BSRGAN_x2-DIV2K-62958d37.pth.tar"
+    #pretrained_g_model_weights_path = "./mlruns/815542563266978794/e9cfef160a7e477a95c0ce0f9893fea9/artifacts/best_g_model"
 
     # Incremental training and migration training
     resume_d_model_weights_path = ""
     resume_g_model_weights_path = ""
 
     # Total num epochs (1,600,000 iters)
-    epochs = 100
+    epochs = 15
     print("Total Epochs -> "+str(epochs))
 
     # Feature extraction layer parameter configuration
@@ -111,15 +111,15 @@ if mode == "train":
 
     # Loss function weight
     #pixel_weight = [1.0]
-    pixel_weight = [15.0]
+    pixel_weight = [40.0]
     #content_weight = [0.1, 0.1, 1.0, 1.0, 1.0]
-    content_weight = [0.2]
+    content_weight = [0.1]
     #adversarial_weight = [0.1]
-    adversarial_weight = [1.0]
+    adversarial_weight = [0.1]
 
     # Optimizer parameter
     #model_lr = 5e-5
-    model_lr = 2e-4
+    model_lr = 1e-4
     model_betas = (0.9, 0.999)
     model_eps = 1e-4  # Keep no nan
     model_weight_decay = 0.0
@@ -130,7 +130,7 @@ if mode == "train":
     # Dynamically adjust the learning rate policy
     lr_scheduler_milestones = [int(epochs * 0.3),int(epochs * 0.5),int(epochs * 0.8)]
     #lr_scheduler_gamma = 0.5
-    lr_scheduler_gamma = 0.7
+    lr_scheduler_gamma = 0.9
 
     # How many iterations to print the training result
     train_print_frequency = 50
@@ -143,7 +143,6 @@ if mode == "test":
     #sr_dir = f"./results/{exp_name}"
 
     save_images = True
-    test_only_degradations = True
 
     gt_dir = f"../data/Bubbles/test"
 

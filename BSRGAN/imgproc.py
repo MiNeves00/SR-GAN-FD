@@ -522,6 +522,7 @@ def degradation_process(
         elif i == 1:
             image = _add_blur(image, upscale_factor)
         elif i == 2:
+            continue
             current_image_height, current_image_width = image.shape[:2]
             # Two down-sample
             if random.random() < 0.75:
@@ -537,6 +538,7 @@ def degradation_process(
                 image = image[0::upscale_factor, 0::upscale_factor, ...]
             image = np.clip(image, 0.0, 1.0)
         elif i == 3:
+            continue
             # Three down-sample
             image = cv2.resize(image,
                                (int(1 / upscale_factor * current_image_width),
@@ -544,6 +546,7 @@ def degradation_process(
                                interpolation=random.choice([1, 2, 3]))
             image = np.clip(image, 0.0, 1.0)
         elif i == 4:
+            continue
             # Add Gaussian noise
             image = _add_gaussian_noise(image, noise_level1=2, noise_level2=25)
         elif i == 5:
@@ -553,6 +556,8 @@ def degradation_process(
 
     # Add final JPEG compression noise
     image = _add_jpeg_compression(image)
+
+    image = image_resize(image, 1 / upscale_factor)
 
     return image
 

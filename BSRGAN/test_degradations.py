@@ -47,11 +47,9 @@ def main() -> None:
 	run = mlflow.active_run()
 	print("Active run_id: {}".format(run.info.run_id))
 	
-	degrad=bsrgan_config.run_id.degradation_process_parameters_dict
+	degrad=bsrgan_config.degradation_process_parameters_dict
 	
-	mlflow.log_metrics({'jpeg_prob':degrad["jpeg_prob"],'scale2_prob':degrad["scale2_prob"],'shuffle_prob':degrad["shuffle_prob"],'use_sharp':degrad["use_sharp"],},step=0)
-
-	print("Continuing run with id:" + str(bsrgan_config.run_id))
+	mlflow.log_params({'jpeg_prob':degrad["jpeg_prob"],'scale2_prob':degrad["scale2_prob"],'shuffle_prob':degrad["shuffle_prob"],'use_sharp':degrad["use_sharp"],})
 
     # Load Test Dataset
 	test_datasets = TrainValidImageDataset(bsrgan_config.gt_dir,
@@ -78,18 +76,18 @@ def main() -> None:
 
 	pathLR = "testImagesLR/"
 
-	print("Starting tests...")
+	print("Starting Degradations...")
 
 	for index in range(total_files):
 
 		batch_data = test_prefetcher.next()
-		gt_tensor = batch_data["gt"].to(device=bsrgan_config.device, non_blocking=True)
 		lr_tensor = batch_data["lr"].to(device=bsrgan_config.device, non_blocking=True)
 
 		lr_image = imgproc.tensor_to_image(lr_tensor, False, False)
 		lr_image = cv2.cvtColor(lr_image, cv2.COLOR_RGB2BGR)
 		mlflow.log_image(lr_image, pathLR+file_names[index])
     
+	print("Finished Degradations")
 
 	mlflow.end_run()
 	exit()
