@@ -37,6 +37,7 @@ torch.manual_seed(0)
 np.random.seed(0)
 # Use GPU for training by default
 device = torch.device("cuda", 0)
+print("Device: "+str(device))
 # Turning on when the image size does not change during training can speed up training
 cudnn.benchmark = True
 # When evaluating the performance of the SR model, whether to verify only the Y channel image data
@@ -60,7 +61,7 @@ g_num_rrdb = 23
 # Upscale factor
 upscale_factor = 2
 # Current configuration parameter method
-mode = "train"
+mode = "test"
 optimizing_metric = "LPIPS"
 loadsFromMlrun = True
 # Experiment name, easy to save weights and log files
@@ -69,7 +70,7 @@ exp_name = "BSRGAN_x2-DIV2K_degradations"
 # MLflow
 experience_name = 'BSRGAN_x2_bubbles' # each name is associated with unique id
 run_name = 'bsrgan_bubbles_10epochs_psnr_degradations_normal_followedby_lpips'
-run_id = '' # used to resume runs
+run_id = '42412e5657df4feb86a1ce5336c712f0' # used to resume runs
 tags = ''
 description = 'BSRGAN upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. Focus on LPIPS, 10 epochs. Was previously trained on PSNR id=803fa4c4bdad488bbd2a72649585de2c'
 
@@ -96,8 +97,8 @@ if mode == "train":
 
     if loadsFromMlrun:
         print("Loading Mlrun models...")
-        pretrained_d_model_weights_path = "./mlruns/815542563266978794/803fa4c4bdad488bbd2a72649585de2c/artifacts/best_d_model"
-        pretrained_g_model_weights_path = "./mlruns/815542563266978794/803fa4c4bdad488bbd2a72649585de2c/artifacts/best_g_model"
+        pretrained_d_model_weights_path = "./mlruns/815542563266978794/42412e5657df4feb86a1ce5336c712f0/artifacts/best_d_model"
+        pretrained_g_model_weights_path = "./mlruns/815542563266978794/42412e5657df4feb86a1ce5336c712f0/artifacts/best_g_model"
     else:
         print("Loading basic pretrained models...")
         pretrained_d_model_weights_path = "./results/pretrained_models/Real-ESRGAN/Discriminator_x2-DFO2K-e37ff529.pth.tar"
@@ -119,7 +120,7 @@ if mode == "train":
 
     # Loss function weight
     #pixel_weight = [1.0]
-    pixel_weight = [10.0]
+    pixel_weight = [1.0]
     #content_weight = [0.1, 0.1, 1.0, 1.0, 1.0]
     content_weight = [1.0]
     #adversarial_weight = [0.1]
@@ -127,7 +128,7 @@ if mode == "train":
 
     # Optimizer parameter
     #model_lr = 5e-5
-    model_lr = 8e-5
+    model_lr = 3e-4
     model_betas = (0.9, 0.999)
     model_eps = 1e-4  # Keep no nan
     model_weight_decay = 0.0
@@ -138,7 +139,7 @@ if mode == "train":
     # Dynamically adjust the learning rate policy
     lr_scheduler_milestones = [int(epochs * 0.3),int(epochs * 0.5),int(epochs * 0.8)]
     #lr_scheduler_gamma = 0.5
-    lr_scheduler_gamma = 0.9
+    lr_scheduler_gamma = 0.8
 
     # How many iterations to print the training result
     train_print_frequency = 50
@@ -151,7 +152,16 @@ if mode == "test":
     #sr_dir = f"./results/{exp_name}"
 
     save_images = True
+    if save_images:
+        print("Will save SR images")
+    else:
+        print("Will NOT save SR images")
 
     gt_dir = f"../data/Bubbles/test"
 
     g_model_weights_path = f"./mlruns/815542563266978794/"+run_id+"/artifacts/best_g_model"
+
+    save_discriminator_eval = False
+
+    if save_discriminator_eval:
+        d_model_weights_path = f"./mlruns/815542563266978794/"+run_id+"/artifacts/best_d_model"

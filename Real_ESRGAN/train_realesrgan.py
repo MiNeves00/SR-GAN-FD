@@ -23,11 +23,14 @@ from torch.optim.swa_utils import AveragedModel
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
+import mlflow
+
 import imgproc
 import model
 import realesrgan_config
 from dataset import CUDAPrefetcher, DegeneratedImageDataset, PairedImageDataset
-from image_quality_assessment import NIQE
+from image_quality_assessment import PSNR, SSIM, NIQE
+from lpips import LPIPS
 from utils import load_state_dict, make_directory, save_checkpoint, validate, AverageMeter, ProgressMeter
 
 
@@ -35,15 +38,38 @@ def main():
     # Initialize the number of training epochs
     start_epoch = 0
 
-    degenerated_train_prefetcher, paired_test_prefetcher = load_dataset()
-    print("Load dataset successfully.")
+    # Initialize training to generate network evaluation indicators
+    best_psnr = 0.0
+    best_ssim = 0.0
+
+    train_prefetcher, valid_prefetcher = load_dataset()
+    print("Load all datasets successfully.")
 
     d_model, g_model, ema_g_model = build_model()
-    print(f"Build `{realesrgan_config.d_model_arch_name}` model "
-          f"`{realesrgan_config.g_model_arch_name}` model successfully.")
+    print(f"Build `{realesrgan_config.g_model_arch_name}` model successfully.")
 
     pixel_criterion, content_criterion, adversarial_criterion = define_loss()
     print("Define all loss functions successfully.")
+
+    print("Check whether to load pretrained d model weights...")
+    if realesrgan_config.pretrained_d_model_weights_path:
+        if realesrgan_config.loadsFromMlrun:
+            d_model = mlflow.pytorch.load_model(realesrgan_config.pretrained_d_model_weights_path)
+        else:
+            d_model = load_state_dict(d_model, realesrgan_config.pretrained_d_model_weights_path)
+        print(f"Loaded `{realesrgan_config.pretrained_d_model_weights_path}` pretrained model weights successfully.")
+    else:
+        print("Pretrained d model weights not found.")
+
+    print("Check whether to load pretrained g model weights...")
+    if realesrgan_config.pretrained_g_model_weights_path:
+        if realesrgan_config.loadsFromMlrun:
+            g_model = mlflow.pytorch.load_model(realesrgan_config.pretrained_g_model_weights_path)
+        else:
+            g_model = load_state_dict(g_model, realesrgan_config.pretrained_g_model_weights_path)
+        print(f"Loaded `{realesrgan_config.pretrained_g_model_weights_path}` pretrained model weights successfully.")
+    else:
+        print("Pretrained g model weights not found.")
 
     d_optimizer, g_optimizer = define_optimizer(d_model, g_model)
     print("Define all optimizer functions successfully.")
@@ -51,72 +77,60 @@ def main():
     d_scheduler, g_scheduler = define_scheduler(d_optimizer, g_optimizer)
     print("Define all optimizer scheduler functions successfully.")
 
-    # Load the pre-trained model weights and fine-tune the model
-    print("Check whether to load pretrained d model weights...")
-    if realesrgan_config.pretrained_d_model_weights_path:
-        #d_model = mlflow.pytorch.load_model(realesrgan_config.pretrained_d_model_weights_path)
-        d_model = load_state_dict(d_model, realesrgan_config.pretrained_d_model_weights_path)
-        print(f"Loaded `{realesrgan_config.pretrained_d_model_weights_path}` pretrained model weights successfully.")
-    else:
-        print("Pretrained d model weights not found.")
-    print("Check whether to load pretrained g model weights...")
-    if realesrgan_config.pretrained_g_model_weights_path:
-        #g_model = mlflow.pytorch.load_model(realesrgan_config.pretrained_g_model_weights_path)
-        g_model = load_state_dict(g_model, realesrgan_config.pretrained_g_model_weights_path)
-        print(f"Loaded `{realesrgan_config.pretrained_g_model_weights_path}` pretrained model weights successfully.")
-    else:
-        print("Pretrained g model weights not found.")
-
-    # Load the last training interruption node
-    print("Check whether the resumed model is restored...")
-    if realesrgan_config.resume_d_model_weights_path:
-        g_model, _, start_epoch, best_psnr, best_ssim, optimizer, scheduler = load_state_dict(
-            d_model,
-            realesrgan_config.resume_d_model_weights_path,
-            None,
-            d_optimizer,
-            d_scheduler,
-            "resume")
-        print("Loaded resume d model weights.")
-    else:
-        print("Resume training d model not found. Start training from scratch.")
-    print("Check whether the resume g model is restored...")
-    if realesrgan_config.resume_g_model_weights_path:
-        g_model, ema_g_model, start_epoch, best_psnr, best_ssim, optimizer, scheduler = load_state_dict(
-            g_model,
-            realesrgan_config.resume_g_model_weights_path,
-            ema_g_model,
-            g_optimizer,
-            g_scheduler,
-            "resume")
-        print("Loaded resume g model weights.")
-    else:
-        print("Resume training g model not found. Start training from scratch.")
-
-    # Model weight training save address
+    # Create a experiment results
     samples_dir = os.path.join("samples", realesrgan_config.exp_name)
     results_dir = os.path.join("results", realesrgan_config.exp_name)
     make_directory(samples_dir)
     make_directory(results_dir)
 
-    # create model training log
+    # Create training process log file
     writer = SummaryWriter(os.path.join("samples", "logs", realesrgan_config.exp_name))
 
-    # Initialize the mixed precision method
+    # Initialize the gradient scaler
     scaler = amp.GradScaler()
 
-    # Initialize the image clarity evaluation method
+    # Create an IQA evaluation model
+    psnr_model = PSNR(realesrgan_config.upscale_factor, realesrgan_config.only_test_y_channel)
+    ssim_model = SSIM(realesrgan_config.upscale_factor, realesrgan_config.only_test_y_channel)
     niqe_model = NIQE(realesrgan_config.upscale_factor, realesrgan_config.niqe_model_path)
-    niqe_model = niqe_model.to(device=realesrgan_config.device)
+    lpips_model = LPIPS(net=realesrgan_config.lpips_net)
 
-    # Initialize training to generate network evaluation indicators
-    best_niqe = 100.0
+    # Transfer the IQA model to the specified device
+    psnr_model = psnr_model.to(device=realesrgan_config.device)
+    ssim_model = ssim_model.to(device=realesrgan_config.device)
+    niqe_model = niqe_model.to(device=realesrgan_config.device, non_blocking=True)
+    lpips_model = lpips_model.to(device=realesrgan_config.device, non_blocking=True)
+
+
+
+    # Start MLFlow Tracking
+    try:
+        mlflow.set_experiment(realesrgan_config.experience_name)
+    except:
+        experiment_id= mlflow.create_experiment(realesrgan_config.experience_name)
+        print("New Experiment created with name: " + realesrgan_config.experience_name + " and ID: " + str(experiment_id))
+
+    # Start MLflow run & log parameters 
+    try:
+      mlflow.start_run(run_name=realesrgan_config.run_name, tags=realesrgan_config.tags, description=realesrgan_config.description)
+    except: # If last session was not ended
+      mlflow.end_run()
+      mlflow.start_run(run_name=realesrgan_config.run_name, tags=realesrgan_config.tags, description=realesrgan_config.description)
+    
+    run = mlflow.active_run()
+    print("Active run_id: {}".format(run.info.run_id))
+
+    mlflow.log_params({'exp_name':realesrgan_config.exp_name,'d_arch_name':realesrgan_config.d_model_arch_name,'g_arch_name':realesrgan_config.g_model_arch_name,'d_in_channels':realesrgan_config.d_in_channels,'d_out_channels':realesrgan_config.d_out_channels,'d_channels':realesrgan_config.d_channels,'g_in_channels':realesrgan_config.g_in_channels,'g_out_channels':realesrgan_config.g_out_channels,'g_channels':realesrgan_config.g_channels,'growth_channels':realesrgan_config.g_growth_channels,'num_blocks':realesrgan_config.g_num_rrdb,'upscale_factor':realesrgan_config.upscale_factor,'gt_image_size':realesrgan_config.gt_image_size,'batch_size':realesrgan_config.batch_size,'train_gt_images_dir':realesrgan_config.train_gt_images_dir,'valid_gt_images_dir':realesrgan_config.valid_gt_images_dir,
+                       'pretrained_d_model_weights_path':realesrgan_config.pretrained_d_model_weights_path,'pretrained_g_model_weights_path':realesrgan_config.pretrained_g_model_weights_path,'resume_d_model_weights_path':realesrgan_config.resume_d_model_weights_path,'resume_g_model_weights_path':realesrgan_config.resume_g_model_weights_path,'epochs':realesrgan_config.epochs,'pixel_weight':realesrgan_config.pixel_weight,'content_weight':realesrgan_config.content_weight,'adversarial_weight':realesrgan_config.adversarial_weight,'feature_model_extractor_nodes':realesrgan_config.feature_model_extractor_nodes,'feature_model_normalize_mean':realesrgan_config.feature_model_normalize_mean,'feature_model_normalize_std':realesrgan_config.feature_model_normalize_std,'model_lr':realesrgan_config.model_lr,'model_betas':realesrgan_config.model_betas,'model_eps':realesrgan_config.model_eps,'model_weight_decay':realesrgan_config.model_weight_decay,'model_ema_decay':realesrgan_config.model_ema_decay,'lr_scheduler_milestones':realesrgan_config.lr_scheduler_milestones,'lr_scheduler_gamma':realesrgan_config.lr_scheduler_gamma,'lpips_net':realesrgan_config.lpips_net,'niqe_model_path':realesrgan_config.niqe_model_path})
+
+    best_decision_metric = 1.0
+
 
     for epoch in range(start_epoch, realesrgan_config.epochs):
-        train(d_model,
+        pixel_loss, content_loss, adversarial_loss, d_gt_probabilities, d_sr_probabilities = train(d_model,
               g_model,
               ema_g_model,
-              degenerated_train_prefetcher,
+              train_prefetcher,
               pixel_criterion,
               content_criterion,
               adversarial_criterion,
@@ -127,50 +141,70 @@ def main():
               writer,
               realesrgan_config.device,
               realesrgan_config.train_print_frequency)
-        niqe = validate(g_model,
-                        paired_test_prefetcher,
+        psnr_val, ssim_val, niqe_val, lpips_val = validate(g_model,
+                        valid_prefetcher,
                         epoch,
                         writer,
                         niqe_model,
-                        realesrgan_config.device,
-                        realesrgan_config.test_print_frequency,
-                        "Test")
+                        psnr_model,
+                        ssim_model,
+                        niqe_model,
+                        lpips_model,
+                        "Valid")
         print("\n")
 
-        # Update the learning rate after each training epoch
+        log_epoch(pixel_loss, content_loss, adversarial_loss, d_gt_probabilities, d_sr_probabilities, psnr_val, ssim_val, niqe_val, lpips_val, epoch)
+
+        # Update LR
         d_scheduler.step()
         g_scheduler.step()
 
-        # Automatically save model weights
-        is_best = niqe < best_niqe
-        is_last = (epoch + 1) == realesrgan_config.epochs
-        best_niqe = min(niqe, best_niqe)
-        save_checkpoint({"epoch": epoch + 1,
-                         "best_niqe": best_niqe,
-                         "state_dict": d_model.state_dict(),
-                         "optimizer": d_optimizer.state_dict(),
-                         "scheduler": d_scheduler.state_dict()},
-                        f"d_epoch_{epoch + 1}.pth.tar",
-                        samples_dir,
-                        results_dir,
-                        "d_best.pth.tar",
-                        "d_last.pth.tar",
-                        is_best,
-                        is_last)
+        # Save the best model with the highest LPIPS score in validation dataset
+        print("Deciding based on "+realesrgan_config.optimizing_metric+" value...")
+        if realesrgan_config.optimizing_metric == "LPIPS":
+            decision_metric = lpips_val
+            is_best = decision_metric < best_decision_metric
+            best_decision_metric = min(decision_metric, best_decision_metric)
+        elif realesrgan_config.optimizing_metric == "PSNR":
+            decision_metric = psnr_val
+            is_best = decision_metric > best_decision_metric
+            best_decision_metric = max(decision_metric, best_decision_metric)
+        else:
+            print("Optimizing metric is inadaquate: "+realesrgan_config.optimizing_metric)
+            exit()
 
-        save_checkpoint({"epoch": epoch + 1,
-                         "best_niqe": best_niqe,
-                         "state_dict": g_model.state_dict(),
-                         "ema_state_dict": ema_g_model.state_dict(),
-                         "optimizer": g_optimizer.state_dict(),
-                         "scheduler": g_scheduler.state_dict()},
-                        f"g_epoch_{epoch + 1}.pth.tar",
-                        samples_dir,
-                        results_dir,
-                        "g_best.pth.tar",
-                        "g_last.pth.tar",
-                        is_best,
-                        is_last)
+        if is_best:
+          print("Saving best model...")
+          mlflow.pytorch.log_model(g_model, "best_g_model")
+          mlflow.pytorch.log_model(d_model, "best_d_model")
+          print("Finished Saving")
+        else:
+          print("Was not the best")
+
+        print("Saving last model...")
+        mlflow.pytorch.log_model(g_model, "last_g_model")
+        mlflow.pytorch.log_model(d_model, "last_d_model")
+        print("Finished Saving")
+
+    # End logging
+    mlflow.end_run()
+
+
+
+def log_epoch(g_pixel_loss, g_content_loss, g_adversarial_loss, d_gt_probabilities, d_sr_probabilities, psnr_val, ssim_val, niqe_val, lpips_val, epoch):
+    '''
+    g_pixel_loss, g_content_loss, g_adversarial_loss: train generator loss
+    d_gt_probabilities, d_sr_probabilities: descriminator probabilities
+    psnr, ssim, niqe, lpips: validation metrics
+    '''
+
+    print('\nLogging epoch data...')
+
+    g_train_loss = g_pixel_loss + g_content_loss + g_adversarial_loss
+
+    mlflow.log_metrics({'g_train_loss':g_train_loss, 'g_pixel_loss':g_pixel_loss, 'g_content_loss':g_content_loss, 'g_adversarial_loss':g_adversarial_loss, 'd_gt_probabilities':d_gt_probabilities, 'd_sr_probabilities':d_sr_probabilities, 'psnr_val':psnr_val, 'ssim_val':ssim_val, 'niqe_val':niqe_val, 'lpips_val':lpips_val}, step=epoch)
+
+    print('Finished Logging\n')
 
 
 def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
@@ -272,9 +306,9 @@ def train(
         d_model: nn.Module,
         g_model: nn.Module,
         ema_g_model: nn.Module,
-        degenerated_train_prefetcher: CUDAPrefetcher,
+        train_prefetcher: CUDAPrefetcher,
         pixel_criterion: nn.L1Loss,
-        feature_criterion: model.ContentLoss,
+        content_criterion: model.ContentLoss,
         adversarial_criterion: nn.BCEWithLogitsLoss,
         d_optimizer: optim.Adam,
         g_optimizer: optim.Adam,
@@ -290,9 +324,9 @@ def train(
         d_model (nn.Module): discriminator model
         g_model (nn.Module): generator model
         ema_g_model (nn.Module): Generator-based exponential mean model
-        degenerated_train_prefetcher (CUDARefetcher): training dataset iterator
+        train_prefetcher (CUDARefetcher): training dataset iterator
         pixel_criterion (nn.L1Loss): pixel loss function
-        feature_criterion (model.FeatureLoss): feature loss function
+        content_criterion (model.FeatureLoss): feature loss function
         adversarial_criterion (nn.BCEWithLogitsLoss): Adversarial loss function
         d_optimizer (optim.Adam): Discriminator model optimizer function
         g_optimizer (optim.Adam): generator model optimizer function
@@ -310,7 +344,7 @@ def train(
     usm_sharpener = usm_sharpener.to(device=device)
 
     # Calculate how many batches of data there are under a dataset iterator
-    batches = len(degenerated_train_prefetcher)
+    batches = len(train_prefetcher)
     # The information printed by the progress bar
     batch_time = AverageMeter("Time", ":6.3f")
     data_time = AverageMeter("Data", ":6.3f")
@@ -333,11 +367,13 @@ def train(
     batch_index = 0
 
     # Initialize the data loader and load the first batch of data
-    degenerated_train_prefetcher.reset()
-    batch_data = degenerated_train_prefetcher.next()
+    train_prefetcher.reset()
+    batch_data = train_prefetcher.next()
 
     # Get the initialization training time
     end = time.time()
+
+    #limit = 12
 
     while batch_data is not None:
         # Calculate the time it takes to load a batch of data
@@ -386,7 +422,7 @@ def train(
             # Use the generator model to generate fake samples
             sr = g_model(lr)
             pixel_loss = pixel_criterion(sr, gt_usm)
-            feature_loss = feature_criterion(sr, gt_usm)
+            feature_loss = content_criterion(sr, gt_usm)
             adversarial_loss = adversarial_criterion(d_model(sr), real_label)
             pixel_loss = torch.sum(torch.mul(pixel_weight, pixel_loss))
             content_loss = torch.sum(torch.mul(content_weight, feature_loss))
@@ -463,11 +499,133 @@ def train(
             progress.display(batch_index)
 
         # Preload the next batch of data
-        batch_data = degenerated_train_prefetcher.next()
+        batch_data = train_prefetcher.next()
 
         # After training a batch of data, add 1 to the number of data batches to ensure that the
         # terminal print data normally
         batch_index += 1
+
+        '''if batch_index>limit:
+          print('Batch limit reached')
+          return pixel_losses.avg, content_losses.avg, adversarial_losses.avg, d_gt_probabilities.avg, d_sr_probabilities.avg'''
+
+    return pixel_losses.avg, content_losses.avg, adversarial_losses.avg, d_gt_probabilities.avg, d_sr_probabilities.avg
+
+
+def validate(
+        g_model: nn.Module,
+        data_prefetcher: CUDAPrefetcher,
+        epoch: int,
+        writer: SummaryWriter,
+        psnr_model: nn.Module,
+        ssim_model: nn.Module,
+        niqe_model: nn.Module,
+        lpips_model: nn.Module,
+        mode: str = "Valid",
+) -> [float, float]:
+    # The information printed by the progress bar
+    batch_time = AverageMeter("Time", ":6.3f")
+    psnres = AverageMeter("PSNR", ":4.2f")
+    ssimes = AverageMeter("SSIM", ":4.4f")
+    niqees = AverageMeter("NIQE", ":4.2f")
+    lpipses = AverageMeter("LPIPS", ":6.6f")
+    progress = ProgressMeter(len(data_prefetcher), [batch_time, psnres, ssimes, niqees, lpipses], prefix=f"{mode}: ")
+
+    print_freq = 1
+    if mode == "Valid":
+      print_freq = realesrgan_config.valid_print_frequency
+    else:
+      print_freq = realesrgan_config.test_print_frequency
+
+    # Set the model as validation model
+    g_model.eval()
+
+    # Initialize data batches
+    batch_index = 0
+
+    #limit = 20
+
+    # Set the data set iterator pointer to 0 and load the first batch of data
+    data_prefetcher.reset()
+    batch_data = data_prefetcher.next()
+
+    # Record the start time of verifying a batch
+    end = time.time()
+
+    # Define JPEG compression method and USM sharpening method
+    jpeg_operation = imgproc.DiffJPEG()
+    usm_sharpener = imgproc.USMSharp()
+    jpeg_operation = jpeg_operation.to(device=realesrgan_config.device)
+    usm_sharpener = usm_sharpener.to(device=realesrgan_config.device)
+
+    # Disable gradient propagation
+    with torch.no_grad():
+        while batch_data is not None:
+            # Load batches of data
+            gt = batch_data["gt"].to(device=realesrgan_config.device, non_blocking=True)
+
+            # Load batches of data
+            gt = batch_data["gt"].to(device=realesrgan_config.device, non_blocking=True)
+            gaussian_kernel1 = batch_data["gaussian_kernel1"].to(device=realesrgan_config.device, non_blocking=True)
+            gaussian_kernel2 = batch_data["gaussian_kernel2"].to(device=realesrgan_config.device, non_blocking=True)
+            sinc_kernel = batch_data["sinc_kernel"].to(device=realesrgan_config.device, non_blocking=True)
+
+            # Get the degraded low-resolution image
+            gt_usm, gt, lr = imgproc.degradation_process(gt,
+                                                        gaussian_kernel1,
+                                                        gaussian_kernel2,
+                                                        sinc_kernel,
+                                                        realesrgan_config.upscale_factor,
+                                                        realesrgan_config.degradation_process_parameters_dict,
+                                                        jpeg_operation,
+                                                        usm_sharpener)
+
+            # inference
+            sr = g_model(lr)
+
+            # Calculate the image IQA
+            psnr = psnr_model(sr, gt)
+            ssim = ssim_model(sr, gt)
+            niqe = niqe_model(sr)
+            sr_tensor = 2*sr - 1 # Normalize from [0,1] to [-1,1]
+            gt_tensor = 2*gt - 1
+            lpips = lpips_model(sr, gt)
+
+            psnres.update(psnr.item(), lr.size(0))
+            ssimes.update(ssim.item(), lr.size(0))
+            niqees.update(niqe.item(), lr.size(0))
+            lpipses.update(lpips.item(), lr.size(0))
+
+            # Record the total time to verify a batch
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+            # Output a verification log information
+            if batch_index % print_freq == 0:
+                progress.display(batch_index + 1)
+
+            # Preload the next batch of data
+            batch_data = data_prefetcher.next()
+
+            # Add 1 to the number of data batches
+            batch_index += 1
+
+            '''if batch_index > limit:
+              print("Limit reached")
+              break'''
+
+    # Print the performance index of the model at the current epoch
+    progress.display_summary()
+
+    if mode == "Valid" or mode == "Test":
+        writer.add_scalar(f"{mode}/PSNR", psnres.avg, epoch + 1)
+        writer.add_scalar(f"{mode}/SSIM", ssimes.avg, epoch + 1)
+        writer.add_scalar(f"{mode}/NIQE", niqees.avg, epoch + 1)
+        writer.add_scalar(f"{mode}/LPIPS", lpipses.avg, epoch + 1)
+    else:
+        raise ValueError("Unsupported mode, please use `Valid` or `Test`.")
+
+    return psnres.avg, ssimes.avg, niqees.avg, lpipses.avg
 
 
 if __name__ == "__main__":

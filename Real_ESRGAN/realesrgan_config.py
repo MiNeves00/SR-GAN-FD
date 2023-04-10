@@ -23,10 +23,12 @@ torch.manual_seed(0)
 np.random.seed(0)
 # Use GPU for training by default
 device = torch.device("cuda", 0)
+print("Device: "+str(device))
 # Turning on when the image size does not change during training can speed up training
 cudnn.benchmark = True
 # NIQE model address
 niqe_model_path = "./results/pretrained_models/niqe_model.mat"
+lpips_net = 'alex'
 # model schema name
 d_model_arch_name = "discriminator_unet"
 g_model_arch_name = "rrdbnet_x4"
@@ -40,12 +42,6 @@ g_out_channels = 3
 g_channels = 64
 g_growth_channels = 32
 g_num_rrdb = 23
-# model magnification
-upscale_factor = 4
-# Current configuration parameter method
-mode = "train"
-# Experiment name, easy to save weights and log files
-exp_name = "RealESRGAN_x4-DIV2K"
 
 degradation_model_parameters_dict = {
     "sinc_kernel_size": 21,
@@ -91,7 +87,26 @@ degradation_process_parameters_dict = {
     "jpeg_range2": [30, 95],
 }
 
+# model magnification
+upscale_factor = 4
+# Current configuration parameter method
+mode = "train"
+optimizing_metric = "LPIPS"
+loadsFromMlrun = True
+# Experiment name, easy to save weights and log files
+exp_name = "RealESRGAN_x4-DIV2K"
+
+# MLflow
+experience_name = 'RealESRGAN_x4_bubbles' # each name is associated with unique id
+run_name = 'realesrgan_bubbles_10epochs_lpips'
+run_id = '' # used to resume runs
+tags = ''
+description = 'RealEsrgan upscale 4 default degradation function. Focus on LPIPS, 10 epochs.'
+
+
 if mode == "train":
+    print("Train")
+    
     # Dataset address
     train_gt_images_dir = f"../data/Bubbles/train"
 
@@ -102,16 +117,22 @@ if mode == "train":
     batch_size = 48
     num_workers = 4
 
-    # Load the address of the pre-trained model
-    pretrained_d_model_weights_path = "./results/pretrained_models/Real-ESRGAN/Discriminator_x4-DFO2K-460b1766.pth.tar"
-    pretrained_g_model_weights_path = "./results/pretrained_models/Real-ESRGAN/RealESRGAN_x4-DFO2K-678bf481.pth.tar"
+    if loadsFromMlrun:
+        print("Loading Mlrun models...")
+        #pretrained_d_model_weights_path = "./mlruns/815542563266978794/803fa4c4bdad488bbd2a72649585de2c/artifacts/best_d_model"
+        #pretrained_g_model_weights_path = "./mlruns/815542563266978794/803fa4c4bdad488bbd2a72649585de2c/artifacts/best_g_model"
+    else:
+        print("Loading basic pretrained models...")
+        pretrained_d_model_weights_path = "./results/pretrained_models/Real-ESRGAN/Discriminator_x4-DFO2K-460b1766.pth.tar"
+
+        pretrained_g_model_weights_path = "./results/pretrained_models/Real-ESRGAN/RealESRGAN_x4-DFO2K-678bf481.pth.tar"
 
     # Define this parameter when training is interrupted or migrated
     resume_d_model_weights_path = f""
     resume_g_model_weights_path = f""
 
     # Total num epochs
-    epochs = 400
+    epochs = 15
 
     # Loss function weights
     pixel_weight = [1.0]
@@ -137,13 +158,14 @@ if mode == "train":
     lr_scheduler_gamma = 0.5
 
     # How many iterations to print the training result
-    train_print_frequency = 200
-    test_print_frequency = 1
+    train_print_frequency = 50
+    test_print_frequency = 200
 
 if mode == "test":
-    # Test data address
-    degradation_test_gt_images_dir = f"./data/Set5/GTmod12"
-    degradation_test_sr_images_dir = f"./results/test/{exp_name}"
-    degradation_test_lr_images_dir = f"./data/Set5/LRbicx{upscale_factor}"
+    print("Test")
+
+    save_images = True
+
+    gt_dir = f"../data/Bubbles/test"
 
     g_model_weights_path = "./results/pretrained_models/RealESRGAN_x4-DFO2K-678bf481.pth.tar"

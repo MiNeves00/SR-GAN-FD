@@ -26,6 +26,8 @@ from lpips import LPIPS
 from utils import make_directory
 from dataset import CUDAPrefetcher, TrainValidImageDataset
 from torch.utils.data import DataLoader
+from torch import nn
+from torchvision.utils import draw_segmentation_masks
 
 model_names = sorted(
     name for name in model.__dict__ if
@@ -67,12 +69,17 @@ def main() -> None:
     # Load Generator Model
     g_model = mlflow.pytorch.load_model(bsrgan_config.g_model_weights_path)
     bsrgan_model = g_model.to(device=bsrgan_config.device)
-
-    # Create a folder of super-resolution experiment results
-    #make_directory(bsrgan_config.sr_dir)
-
-    # Start the verification mode of the bsrgan_model.
     bsrgan_model.eval()
+
+    # Load Discriminator Model
+    if bsrgan_config.save_discriminator_eval:
+      d_model = mlflow.pytorch.load_model(bsrgan_config.d_model_weights_path)
+      d_model = d_model.to(device=bsrgan_config.device)
+
+      adversarial_criterion = nn.BCEWithLogitsLoss()
+      adversarial_criterion = adversarial_criterion.to(device=bsrgan_config.device)
+      d_model.eval()
+
 
     # Initialize the sharpness evaluation function
     psnr = PSNR(bsrgan_config.upscale_factor, bsrgan_config.only_test_y_channel)
@@ -99,6 +106,8 @@ def main() -> None:
 
     pathLR = "testImagesLR/"
     pathTest = "testImages/"
+    pathDiscriminatorGT = "testDiscriminatorGT/"
+    pathDiscriminatorSR = "testDiscriminatorSR/"
 
     print("Starting tests...")
 
@@ -108,9 +117,10 @@ def main() -> None:
         gt_tensor = batch_data["gt"].to(device=bsrgan_config.device, non_blocking=True)
         lr_tensor = batch_data["lr"].to(device=bsrgan_config.device, non_blocking=True)
 
-        lr_image = imgproc.tensor_to_image(lr_tensor, False, False)
-        lr_image = cv2.cvtColor(lr_image, cv2.COLOR_RGB2BGR)
-        mlflow.log_image(lr_image, pathLR+file_names[index])
+        if bsrgan_config.save_images:
+          lr_image = imgproc.tensor_to_image(lr_tensor, False, False)
+          lr_image = cv2.cvtColor(lr_image, cv2.COLOR_RGB2BGR)
+          mlflow.log_image(lr_image, pathLR+file_names[index])
 
         # Only reconstruct the Y channel image data.
         with torch.no_grad():
@@ -122,6 +132,43 @@ def main() -> None:
           sr_image = cv2.cvtColor(sr_image, cv2.COLOR_RGB2BGR)
           mlflow.log_image(sr_image, pathTest+file_names[index])
           #cv2.imwrite(sr_image_path, sr_image)
+
+        if bsrgan_config.save_discriminator_eval:
+          # Discriminator output
+          batch_size, _, height, width = gt_tensor.shape
+          real_label = torch.full([batch_size, 1, height, width], 1.0, dtype=gt_tensor.dtype, device=bsrgan_config.device)
+          fake_label = torch.full([batch_size, 1, height, width], 0.0, dtype=gt_tensor.dtype, device=bsrgan_config.device)
+
+          gt_output = d_model(gt_tensor)
+
+          d_loss_hr = adversarial_criterion(gt_output, real_label)
+          print(f'GT Loss: {d_loss_hr}')
+
+          sr_output = d_model(sr_tensor.detach().clone())
+          d_loss_sr = adversarial_criterion(sr_output, fake_label)
+          print(f'SR Loss: {d_loss_sr}')
+
+          d_loss = d_loss_hr + d_loss_sr
+          print(f'Total Loss: {d_loss}')
+
+          d_gt_probability = torch.sigmoid_(torch.mean(gt_output.detach()))
+          print("GT Probabilities Discriminator\n")
+          print(d_gt_probability)
+          print(f'GT Probabilities shape: {d_gt_probability.shape}')
+          #d_gt_probability = [d_gt_probability,d_gt_probability,d_gt_probability]
+          gt_image = imgproc.tensor_to_image(d_gt_probability, False, False)
+          gt_image = cv2.cvtColor(gt_image, cv2.COLOR_RGB2BGR)
+          mlflow.log_image(gt_image, pathDiscriminatorGT+file_names[index])
+
+
+          d_sr_probability = torch.sigmoid_(torch.mean(sr_output.detach()))
+          print("SR Probabilities Discriminator\n")
+          print(d_sr_probability)
+          print(f'SR Probabilities shape: {d_sr_probability.shape}')
+          #d_sr_probability = [d_sr_probability,d_sr_probability,d_sr_probability]
+          sr_image = imgproc.tensor_to_image(d_sr_probability, False, False)
+          sr_image = cv2.cvtColor(sr_image, cv2.COLOR_RGB2BGR)
+          mlflow.log_image(sr_image, pathDiscriminatorSR+file_names[index])
 
         # Cal IQA metrics
         psnr_metrics += psnr(sr_tensor, gt_tensor).item()
