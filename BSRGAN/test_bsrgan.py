@@ -134,40 +134,38 @@ def main() -> None:
           #cv2.imwrite(sr_image_path, sr_image)
 
         if bsrgan_config.save_discriminator_eval:
-          # Discriminator output
+          # Discriminator output, fake is 0 which is black. Real is 1 which is white
           batch_size, _, height, width = gt_tensor.shape
           real_label = torch.full([batch_size, 1, height, width], 1.0, dtype=gt_tensor.dtype, device=bsrgan_config.device)
           fake_label = torch.full([batch_size, 1, height, width], 0.0, dtype=gt_tensor.dtype, device=bsrgan_config.device)
 
           gt_output = d_model(gt_tensor)
 
+          gt_output = torch.sigmoid_(gt_output)
+
           d_loss_hr = adversarial_criterion(gt_output, real_label)
           print(f'GT Loss: {d_loss_hr}')
 
           sr_output = d_model(sr_tensor.detach().clone())
+          sr_output = torch.sigmoid_(sr_output)
+          
           d_loss_sr = adversarial_criterion(sr_output, fake_label)
           print(f'SR Loss: {d_loss_sr}')
 
           d_loss = d_loss_hr + d_loss_sr
           print(f'Total Loss: {d_loss}')
 
+
+
           d_gt_probability = torch.sigmoid_(torch.mean(gt_output.detach()))
-          print("GT Probabilities Discriminator\n")
-          print(d_gt_probability)
-          print(f'GT Probabilities shape: {d_gt_probability.shape}')
-          #d_gt_probability = [d_gt_probability,d_gt_probability,d_gt_probability]
-          gt_image = imgproc.tensor_to_image(d_gt_probability, False, False)
-          gt_image = cv2.cvtColor(gt_image, cv2.COLOR_RGB2BGR)
+          gt_image = imgproc.tensor_to_image(gt_output, False, False)
+          #gt_image = cv2.cvtColor(gt_image, cv2.COLOR_RGB2BGR)
           mlflow.log_image(gt_image, pathDiscriminatorGT+file_names[index])
 
 
           d_sr_probability = torch.sigmoid_(torch.mean(sr_output.detach()))
-          print("SR Probabilities Discriminator\n")
-          print(d_sr_probability)
-          print(f'SR Probabilities shape: {d_sr_probability.shape}')
-          #d_sr_probability = [d_sr_probability,d_sr_probability,d_sr_probability]
-          sr_image = imgproc.tensor_to_image(d_sr_probability, False, False)
-          sr_image = cv2.cvtColor(sr_image, cv2.COLOR_RGB2BGR)
+          sr_image = imgproc.tensor_to_image(sr_output, False, False)
+          #sr_image = cv2.cvtColor(sr_image, cv2.COLOR_RGB2BGR)
           mlflow.log_image(sr_image, pathDiscriminatorSR+file_names[index])
 
         # Cal IQA metrics
@@ -178,6 +176,9 @@ def main() -> None:
         sr_tensor = 2*sr_tensor - 1 # Normalize from [0,1] to [-1,1]
         gt_tensor = 2*gt_tensor - 1
         lpips_metrics += lpips(sr_tensor, gt_tensor).item()
+
+        if index > 10:
+          break
 
     # Calculate the average value of the sharpness evaluation index,
     # and all index range values are cut according to the following values

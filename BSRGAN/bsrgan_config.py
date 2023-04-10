@@ -151,7 +151,7 @@ if mode == "test":
     #lr_dir = "./data/RealSRSet"
     #sr_dir = f"./results/{exp_name}"
 
-    save_images = True
+    save_images = False
     if save_images:
         print("Will save SR images")
     else:
@@ -161,7 +161,7 @@ if mode == "test":
 
     g_model_weights_path = f"./mlruns/815542563266978794/"+run_id+"/artifacts/best_g_model"
 
-    save_discriminator_eval = False
+    save_discriminator_eval = True
 
     if save_discriminator_eval:
         d_model_weights_path = f"./mlruns/815542563266978794/"+run_id+"/artifacts/best_d_model"
