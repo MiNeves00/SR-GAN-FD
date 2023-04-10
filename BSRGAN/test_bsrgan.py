@@ -99,6 +99,13 @@ def main() -> None:
     niqe_metrics = 0.0
     lpips_metrics = 0.0
 
+    if bsrgan_config.save_discriminator_eval:
+       sr_prob_metrics = 0.0
+       gt_prob_metrics = 0.0
+       gt_loss_metrics = 0.0
+       sr_loss_metrics = 0.0
+       total_loss_metrics = 0.0
+
     # Get a list of test image file names.
     file_names = os.listdir(bsrgan_config.gt_dir)
     # Get the number of test image files.
@@ -141,31 +148,30 @@ def main() -> None:
 
           gt_output = d_model(gt_tensor)
 
-          gt_output = torch.sigmoid_(gt_output)
-
           d_loss_hr = adversarial_criterion(gt_output, real_label)
-          print(f'GT Loss: {d_loss_hr}')
 
           sr_output = d_model(sr_tensor.detach().clone())
-          sr_output = torch.sigmoid_(sr_output)
           
           d_loss_sr = adversarial_criterion(sr_output, fake_label)
-          print(f'SR Loss: {d_loss_sr}')
 
           d_loss = d_loss_hr + d_loss_sr
-          print(f'Total Loss: {d_loss}')
+
+          d_gt_probability = torch.mean(torch.sigmoid_(gt_output.detach()))
+          d_sr_probability = torch.mean(torch.sigmoid_(sr_output.detach()))
+
+          gt_prob_metrics += d_gt_probability.item()
+          sr_prob_metrics += d_sr_probability.item()
+          gt_loss_metrics += d_loss_hr.item()
+          sr_loss_metrics += d_loss_sr.item()
+          total_loss_metrics += d_loss.item()
 
 
 
-          d_gt_probability = torch.sigmoid_(torch.mean(gt_output.detach()))
-          gt_image = imgproc.tensor_to_image(gt_output, False, False)
-          #gt_image = cv2.cvtColor(gt_image, cv2.COLOR_RGB2BGR)
+          gt_image = imgproc.tensor_to_image(torch.sigmoid_(gt_output), False, False)
           mlflow.log_image(gt_image, pathDiscriminatorGT+file_names[index])
 
 
-          d_sr_probability = torch.sigmoid_(torch.mean(sr_output.detach()))
-          sr_image = imgproc.tensor_to_image(sr_output, False, False)
-          #sr_image = cv2.cvtColor(sr_image, cv2.COLOR_RGB2BGR)
+          sr_image = imgproc.tensor_to_image(torch.sigmoid_(sr_output), False, False)
           mlflow.log_image(sr_image, pathDiscriminatorSR+file_names[index])
 
         # Cal IQA metrics
@@ -177,8 +183,8 @@ def main() -> None:
         gt_tensor = 2*gt_tensor - 1
         lpips_metrics += lpips(sr_tensor, gt_tensor).item()
 
-        if index > 10:
-          break
+        #if index > 10:
+        #  break
 
     # Calculate the average value of the sharpness evaluation index,
     # and all index range values are cut according to the following values
@@ -189,6 +195,19 @@ def main() -> None:
     avg_ssim = 1 if ssim_metrics / total_files > 1 else ssim_metrics / total_files
     avg_niqe = 100 if niqe_metrics / total_files > 100 else niqe_metrics / total_files
     avg_lpips = 100 if lpips_metrics / total_files > 100 else lpips_metrics / total_files
+
+    if bsrgan_config.save_discriminator_eval:
+      avg_gt_prob_metrics = gt_prob_metrics / total_files
+      avg_sr_prob_metrics = sr_prob_metrics / total_files
+      avg_gt_loss_metrics = gt_loss_metrics / total_files
+      avg_sr_loss_metrics = sr_loss_metrics / total_files
+      avg_total_loss_metrics = total_loss_metrics / total_files
+      print(f"GT Prob: {avg_gt_prob_metrics:4.4f} [dB]\n"
+          f"SR Prob: {avg_sr_prob_metrics:4.4f} [u]\n"
+          f"GT Loss: {avg_gt_loss_metrics:4.4f} [100u]\n"
+          f"SR Loss: {avg_sr_loss_metrics:4.4f} [100u]\n"
+          f"Total Loss: {avg_total_loss_metrics:4.4f} [100u]\n")
+
  
     print(f"PSNR: {avg_psnr:4.2f} [dB]\n"
           f"SSIM: {avg_ssim:4.4f} [u]\n"
@@ -196,6 +215,8 @@ def main() -> None:
           f"LPIPS: {avg_lpips:4.2f} [100u]")
 
     metrics_dict = {"PSNR": avg_psnr, "SSIM": avg_ssim, "NIQE": avg_niqe, "LPIPS": avg_lpips}
+    if bsrgan_config.save_discriminator_eval:
+       metrics_dict = {"PSNR": avg_psnr, "SSIM": avg_ssim, "NIQE": avg_niqe, "LPIPS": avg_lpips, "GT Prob": avg_gt_prob_metrics, "SR Prob": avg_sr_prob_metrics, "GT Loss": avg_gt_loss_metrics, "SR Loss": avg_sr_loss_metrics, "Total Loss": avg_total_loss_metrics}
     mlflow.log_dict(metrics_dict,"testMetrics.json")
 
     mlflow.end_run()

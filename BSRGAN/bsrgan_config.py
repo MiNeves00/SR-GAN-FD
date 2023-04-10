@@ -62,17 +62,17 @@ g_num_rrdb = 23
 upscale_factor = 2
 # Current configuration parameter method
 mode = "test"
-optimizing_metric = "LPIPS"
+optimizing_metric = "Discriminator SR Prob"
 loadsFromMlrun = True
 # Experiment name, easy to save weights and log files
 exp_name = "BSRGAN_x2-DIV2K_degradations"
 
 # MLflow
 experience_name = 'BSRGAN_x2_bubbles' # each name is associated with unique id
-run_name = 'bsrgan_bubbles_10epochs_psnr_degradations_normal_followedby_lpips'
-run_id = '42412e5657df4feb86a1ce5336c712f0' # used to resume runs
+run_name = 'discriminator_only_train_on_previous_LPIPS_model'
+run_id = 'fa8a220b890240d7981796c865e9dfdb' # used to resume runs
 tags = ''
-description = 'BSRGAN upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. Focus on LPIPS, 10 epochs. Was previously trained on PSNR id=803fa4c4bdad488bbd2a72649585de2c'
+description = 'BSRGAN upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. Focus on LPIPS, 10 epochs. Was previously trained on PSNR id=803fa4c4bdad488bbd2a72649585de2c. Then focused on LPIPS to originate id=42412e5657df4feb86a1ce5336c712f0. And now the discriminator only will be trained.'
 
 if mode == "train":
     print("Train")
@@ -81,6 +81,12 @@ if mode == "train":
 
     test_gt_images_dir = f"./data/Set5/GTmod12"
     test_lr_images_dir = f"./data/Set5/LRbicx{upscale_factor}"'''
+
+    train_generator = False
+    if train_generator is False:
+        print("\nGenerator is not being trained!\n")
+
+    print(f'Optimizing for: {optimizing_metric}\n')
 
     train_gt_images_dir = f"../data/Bubbles/train"
 
@@ -128,7 +134,7 @@ if mode == "train":
 
     # Optimizer parameter
     #model_lr = 5e-5
-    model_lr = 3e-4
+    model_lr = 1e-4
     model_betas = (0.9, 0.999)
     model_eps = 1e-4  # Keep no nan
     model_weight_decay = 0.0
@@ -159,9 +165,9 @@ if mode == "test":
 
     gt_dir = f"../data/Bubbles/test"
 
-    g_model_weights_path = f"./mlruns/815542563266978794/"+run_id+"/artifacts/best_g_model"
+    g_model_weights_path = f"./mlruns/815542563266978794/"+run_id+"/artifacts/last_g_model"
 
     save_discriminator_eval = True
 
     if save_discriminator_eval:
-        d_model_weights_path = f"./mlruns/815542563266978794/"+run_id+"/artifacts/best_d_model"
+        d_model_weights_path = f"./mlruns/815542563266978794/"+run_id+"/artifacts/last_d_model"

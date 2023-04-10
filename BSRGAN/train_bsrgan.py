@@ -124,6 +124,10 @@ def main():
 
     best_decision_metric = 1.0
 
+    if bsrgan_config.optimizing_metric == "Discriminator SR Prob":
+        best_decision_metric_gt = 1.0
+        best_decision_metric_sr = 1.0
+
     for epoch in range(start_epoch, bsrgan_config.epochs):
         pixel_loss, content_loss, adversarial_loss, d_gt_probabilities, d_sr_probabilities = train(d_model,
               g_model,
@@ -166,6 +170,10 @@ def main():
             decision_metric = psnr_val
             is_best = decision_metric > best_decision_metric
             best_decision_metric = max(decision_metric, best_decision_metric)
+        elif  bsrgan_config.optimizing_metric == "Discriminator SR Prob":
+            decision_metric_sr = d_sr_probabilities
+            is_best = decision_metric_sr < best_decision_metric_sr
+            best_decision_metric = min(decision_metric, best_decision_metric)
         else:
             print("Optimizing metric is inadaquate: "+bsrgan_config.optimizing_metric)
             exit()
@@ -425,22 +433,25 @@ def train(
             adversarial_loss = torch.sum(torch.mul(adversarial_weight, adversarial_loss))
             # Calculate the generator total loss value
             g_loss = pixel_loss + content_loss + adversarial_loss
-        # Call the gradient scaling function in the mixed precision API to
-        # back-propagate the gradient information of the fake samples
-        scaler.scale(g_loss).backward()
-        # Encourage the generator to generate higher quality fake samples,
-        # making it easier to fool the discriminator
-        scaler.step(g_optimizer)
-        scaler.update()
+        
+        
+        if bsrgan_config.train_generator:
+            # Call the gradient scaling function in the mixed precision API to
+            # back-propagate the gradient information of the fake samples
+            scaler.scale(g_loss).backward()
+            # Encourage the generator to generate higher quality fake samples,
+            # making it easier to fool the discriminator
+            scaler.step(g_optimizer)
+            scaler.update()
 
-        # Update EMA
-        ema_g_model.update_parameters(g_model)
-        # Finish training the generator model
+            # Update EMA
+            ema_g_model.update_parameters(g_model)
+            # Finish training the generator model
 
         # Calculate the score of the discriminator on real samples and fake samples,
         # the score of real samples is close to 1, and the score of fake samples is close to 0
-        d_gt_probability = torch.sigmoid_(torch.mean(gt_output.detach()))
-        d_sr_probability = torch.sigmoid_(torch.mean(sr_output.detach()))
+        d_gt_probability = torch.mean(torch.sigmoid_(gt_output.detach()))
+        d_sr_probability = torch.mean(torch.sigmoid_(sr_output.detach()))
 
         # Statistical accuracy and loss value for terminal data output
         pixel_losses.update(pixel_loss.item(), lr.size(0))
