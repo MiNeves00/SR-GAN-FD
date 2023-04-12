@@ -288,7 +288,7 @@ def define_loss() -> [nn.L1Loss, model.ContentLoss, nn.BCEWithLogitsLoss]:
 
 def define_optimizer(d_model, g_model) -> [optim.Adam, optim.Adam]:
     d_optimizer = optim.Adam(d_model.parameters(),
-                             bsrgan_config.model_lr,
+                             bsrgan_config.discriminator_lr,
                              bsrgan_config.model_betas,
                              bsrgan_config.model_eps,
                              bsrgan_config.model_weight_decay)

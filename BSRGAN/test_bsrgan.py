@@ -126,7 +126,7 @@ def main() -> None:
 
         if bsrgan_config.save_images:
           lr_image = imgproc.tensor_to_image(lr_tensor, False, False)
-          lr_image = cv2.cvtColor(lr_image, cv2.COLOR_RGB2BGR)
+          #lr_image = cv2.cvtColor(lr_image, cv2.COLOR_RGB2BGR)
           mlflow.log_image(lr_image, pathLR+file_names[index])
 
         # Only reconstruct the Y channel image data.
@@ -136,7 +136,7 @@ def main() -> None:
         # Save image
         if bsrgan_config.save_images:
           sr_image = imgproc.tensor_to_image(sr_tensor, False, False)
-          sr_image = cv2.cvtColor(sr_image, cv2.COLOR_RGB2BGR)
+          #sr_image = cv2.cvtColor(sr_image, cv2.COLOR_RGB2BGR)
           mlflow.log_image(sr_image, pathTest+file_names[index])
           #cv2.imwrite(sr_image_path, sr_image)
 
@@ -181,9 +181,48 @@ def main() -> None:
         
         sr_tensor = 2*sr_tensor - 1 # Normalize from [0,1] to [-1,1]
         gt_tensor = 2*gt_tensor - 1
-        lpips_metrics += lpips(sr_tensor, gt_tensor).item()
 
-        #if index > 10:
+        # LPIPS in subimages
+        if bsrgan_config.subdivision_lpips:
+          subdivisions_upscale = bsrgan_config.upscale_lpips_eval
+
+          img_sr_chunks_height = torch.chunk(sr_tensor, 2, dim=2)
+          # split each of the two height chunks into two equal parts along the width dimension
+          img_sr_subdivisions = []
+          for chunk_height in img_sr_chunks_height:
+              chunks_width = torch.chunk(chunk_height, 2, dim=3)
+              img_sr_subdivisions.extend(chunks_width)
+
+
+          img_gt_chunks_height = torch.chunk(gt_tensor, 2, dim=2)
+          # split each of the two height chunks into two equal parts along the width dimension
+          img_gt_subdivisions = []
+          for chunk_height in img_gt_chunks_height:
+              chunks_width = torch.chunk(chunk_height, 2, dim=3)
+              img_gt_subdivisions.extend(chunks_width)
+
+          lpips_total = lpips(sr_tensor, gt_tensor).item()
+          #print(f'LPIPS Total image: {lpips_total}')
+
+          avg_lpips_sub = 0
+          sub_index = 0
+          for subdivision_sr, subdivision_gt in zip(img_sr_subdivisions,img_gt_subdivisions):
+            sr_image = imgproc.tensor_to_image(subdivision_sr, False, False)
+            sr_image = cv2.cvtColor(sr_image, cv2.COLOR_RGB2BGR)
+            mlflow.log_image(sr_image, "SubDivSR/"+str(sub_index)+"_"+file_names[index])
+            gt_image = imgproc.tensor_to_image(subdivision_gt, False, False)
+            gt_image = cv2.cvtColor(gt_image, cv2.COLOR_RGB2BGR)
+            mlflow.log_image(gt_image, "SubDivGT/"+str(sub_index)+"_"+file_names[index])
+            avg_lpips_sub += lpips(subdivision_sr, subdivision_gt).item()
+            sub_index += 1
+
+          avg_lpips_sub /= subdivisions_upscale*2
+          #print(f'Avg LPIPS: {avg_lpips_sub}')
+          lpips_metrics += avg_lpips_sub
+        else:
+           lpips_metrics += lpips(sr_tensor,gt_tensor).item()
+
+        #if index == 4:
         #  break
 
     # Calculate the average value of the sharpness evaluation index,
@@ -217,7 +256,9 @@ def main() -> None:
     metrics_dict = {"PSNR": avg_psnr, "SSIM": avg_ssim, "NIQE": avg_niqe, "LPIPS": avg_lpips}
     if bsrgan_config.save_discriminator_eval:
        metrics_dict = {"PSNR": avg_psnr, "SSIM": avg_ssim, "NIQE": avg_niqe, "LPIPS": avg_lpips, "GT Prob": avg_gt_prob_metrics, "SR Prob": avg_sr_prob_metrics, "GT Loss": avg_gt_loss_metrics, "SR Loss": avg_sr_loss_metrics, "Total Loss": avg_total_loss_metrics}
-    mlflow.log_dict(metrics_dict,"testMetrics.json")
+
+    if bsrgan_config.save_metrics:
+      mlflow.log_dict(metrics_dict,"testMetrics.json")
 
     mlflow.end_run()
 
