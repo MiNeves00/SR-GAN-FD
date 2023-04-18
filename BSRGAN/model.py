@@ -23,7 +23,7 @@ from torchvision.models.feature_extraction import create_feature_extractor
 
 __all__ = [
     "DiscriminatorUNet", "BSRGAN", "ContentLoss",
-    "discriminator_unet", "bsrgan_x2", "bsrgan_x4", "content_loss",
+    "discriminator_unet", "discriminator_unet_sa", "bsrgan_x2", "bsrgan_x4", "bsrgansa_x2", "content_loss",
 
 ]
 
@@ -86,7 +86,7 @@ class _ResidualResidualDenseBlock(nn.Module):
         out = torch.add(out, identity)
 
         return out
-
+    
 
 class DiscriminatorUNet(nn.Module):
     def __init__(
@@ -166,8 +166,120 @@ class DiscriminatorUNet(nn.Module):
 
         return out
     
+# Code added from GPT4
+class DiscriminatorUNetsa(nn.Module):
+    def __init__(
+            self,
+            in_channels: int,
+            out_channels: int,
+            channels: int,
+            upsample_method: str = "bilinear",
+    ) -> None:
+        super(DiscriminatorUNetsa, self).__init__()
+        self.upsample_method = upsample_method
+
+        self.conv1 = nn.Conv2d(in_channels, 64, (3, 3), (1, 1), (1, 1))
+
+
+        # Adding SelfAttention layers
+        self.self_attention_down2 = SelfAttention(int(channels * 4))
+        self.self_attention_down3 = SelfAttention(int(channels * 8))
+        self.self_attention_up1 = SelfAttention(int(channels * 4))
+
+        self.down_block1 = nn.Sequential(
+            spectral_norm(nn.Conv2d(channels, int(channels * 2), (4, 4), (2, 2), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.down_block2 = nn.Sequential(
+            spectral_norm(nn.Conv2d(int(channels * 2), int(channels * 4), (4, 4), (2, 2), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.down_block3 = nn.Sequential(
+            spectral_norm(nn.Conv2d(int(channels * 4), int(channels * 8), (4, 4), (2, 2), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.up_block1 = nn.Sequential(
+            spectral_norm(nn.Conv2d(int(channels * 8), int(channels * 4), (3, 3), (1, 1), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.up_block2 = nn.Sequential(
+            spectral_norm(nn.Conv2d(int(channels * 4), int(channels * 2), (3, 3), (1, 1), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.up_block3 = nn.Sequential(
+            spectral_norm(nn.Conv2d(int(channels * 2), channels, (3, 3), (1, 1), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.conv2 = nn.Sequential(
+            spectral_norm(nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.conv3 = nn.Sequential(
+            spectral_norm(nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.conv4 = nn.Conv2d(channels, out_channels, (3, 3), (1, 1), (1, 1))
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self._forward_impl(x)
+
+    # Support torch.script function
+    def _forward_impl(self, x: Tensor) -> Tensor:
+        out1 = self.conv1(x)
+
+        # Down-sampling
+        down1 = self.down_block1(out1)
+        down2 = self.down_block2(down1)
+        down2, _ = self.self_attention_down2(down2)
+        down3 = self.down_block3(down2)
+        down3, _ = self.self_attention_down3(down3)
+
+        # Up-sampling
+        down3 = F_torch.interpolate(down3, scale_factor=2, mode="bilinear", align_corners=False)
+        up1 = self.up_block1(down3)
+        up1, _ = self.self_attention_up1(up1)  # Applying self-attention after the first up-sampling block
+
+        up1 = torch.add(up1, down2)
+        up1 = F_torch.interpolate(up1, scale_factor=2, mode="bilinear", align_corners=False)
+        up2 = self.up_block2(up1)
+        #up2, _ = self.self_attention_up2(up2)  # Applying self-attention after the second up-sampling block
+
+        up2 = torch.add(up2, down1)
+        up2 = F_torch.interpolate(up2, scale_factor=2, mode="bilinear", align_corners=False)
+        up3 = self.up_block3(up2)
+        #up3, _ = self.self_attention_up3(up3)  # Applying self-attention after the third up-sampling block
+
+        up3 = torch.add(up3, out1)
+
+        out = self.conv2(up3)
+        out = self.conv3(out)
+        out = self.conv4(out)
+
+        return out
+    
+    def visualize_attention_map(self, image: Tensor, attention_layer_id: int = 0) -> None:
+
+        # Pass input image through the model
+        with torch.no_grad():
+            _ = self.forward(image)
+
+        if attention_layer_id == 0:
+            attention_map = self.attn_map3
+        else:
+            raise ValueError("Invalid attention_layer_id, please choose a valid index for the self-attention layers.")
+
+        # Average pooling along the channel dimension (method 1)
+        avg_attention_map = torch.mean(attention_map, dim=1)
+
+        # Normalize the attention map to [0, 1]
+        normalized_attention_map = (avg_attention_map - avg_attention_map.min()) / (avg_attention_map.max() - avg_attention_map.min())
+
+        return normalized_attention_map
+    
+    
+'''
 # Code added extra from gt3
-class SelfAttention(nn.Module):
+class SelfAttentionGPT3(nn.Module):
     def __init__(self, in_channels):
         super(SelfAttention, self).__init__()
 
@@ -192,7 +304,7 @@ class SelfAttention(nn.Module):
 
         out = self.gamma * out + x
         return out
-
+'''
 
 class BSRGAN(nn.Module):
     def __init__(
@@ -269,6 +381,123 @@ class BSRGAN(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         return self._forward_impl(x)
 
+# created by gpt4
+
+class SelfAttention(nn.Module):
+    def __init__(self, channels: int, num_heads: int = 8):
+        super(SelfAttention, self).__init__()
+        self.channels = channels
+        self.num_heads = num_heads
+        self.multihead_attention = nn.MultiheadAttention(channels, num_heads)
+
+    def forward(self, x: Tensor) -> Tensor:
+        b, c, h, w = x.size()
+        x = x.view(b, c, -1)  # flatten the spatial dimensions
+        x = x.permute(2, 0, 1)  # (seq_len, batch, channels)
+        attn_output, attn_output_weights = self.multihead_attention(x, x, x)
+        attn_output = attn_output.permute(1, 2, 0)  # (batch, channels, seq_len)
+        attn_output = attn_output.view(b, c, h, w)  # reshape back to the original size
+        return attn_output, attn_output_weights
+
+
+class BSRGANsa(nn.Module):
+    def __init__(
+            self,
+            in_channels: int = 3,
+            out_channels: int = 3,
+            channels: int = 64,
+            growth_channels: int = 32,
+            num_rrdb: int = 23,
+            upscale_factor: int = 4,
+    ) -> None:
+        super(BSRGANsa, self).__init__()
+        self.upscale_factor = upscale_factor
+
+        # The first layer of convolutional layer.
+        self.conv1 = nn.Conv2d(in_channels, channels, (3, 3), (1, 1), (1, 1))
+
+        # Feature extraction backbone network.
+        trunk = []
+        for _ in range(num_rrdb):
+            trunk.append(_ResidualResidualDenseBlock(channels, growth_channels))
+        self.trunk = nn.Sequential(*trunk)
+
+        # After the feature extraction network, reconnect a layer of convolutional blocks.
+        self.conv2 = nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1))
+
+        # Upsampling convolutional layer.
+        self.upsampling1 = nn.Sequential(
+            nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1)),
+            nn.LeakyReLU(0.2, True)
+        )
+
+        if upscale_factor == 4:
+            self.upsampling2 = nn.Sequential(
+                nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1)),
+                nn.LeakyReLU(0.2, True)
+            )
+
+        # Reconnect a layer of convolution block after upsampling.
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(channels, channels*4, (3, 3), (1, 1), (1, 1)),
+            nn.LeakyReLU(0.2, True)
+        )
+
+        self.self_attention3 = SelfAttention(channels*4)
+
+        # Output layer.
+        self.conv4 = nn.Conv2d(channels*4, out_channels, (3, 3), (1, 1), (1, 1))
+
+        # Initialize all model layer
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                nn.init.kaiming_normal_(module.weight)
+                module.weight.data *= 0.1
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+
+    def _forward_impl(self, x: Tensor) -> Tensor:
+        out1 = self.conv1(x)
+        out = self.trunk(out1)
+        out2 = self.conv2(out)
+        out = torch.add(out1, out2)
+
+        out = self.upsampling1(F_torch.interpolate(out, scale_factor=2, mode="nearest"))
+        if self.upscale_factor == 4:
+            out = self.upsampling2(F_torch.interpolate(out, scale_factor=2, mode="nearest"))
+
+        out = self.conv3(out)
+        out, self.attn_map3 = self.self_attention3(out)
+        out = self.conv4(out)
+
+        out = torch.clamp_(out, 0.0, 1.0)
+
+        return out
+    
+    def visualize_attention_map(self, image: Tensor, attention_layer_id: int = 0) -> None:
+
+        # Pass input image through the model
+        with torch.no_grad():
+            _ = self.forward(image)
+
+        if attention_layer_id == 0:
+            attention_map = self.attn_map3
+        else:
+            raise ValueError("Invalid attention_layer_id, please choose a valid index for the self-attention layers.")
+
+        # Average pooling along the channel dimension (method 1)
+        avg_attention_map = torch.mean(attention_map, dim=1)
+
+        # Normalize the attention map to [0, 1]
+        normalized_attention_map = (avg_attention_map - avg_attention_map.min()) / (avg_attention_map.max() - avg_attention_map.min())
+
+        return normalized_attention_map
+    
+    def forward(self, x: Tensor) -> Tensor:
+        return self._forward_impl(x)
+
+
+
 
 class ContentLoss(nn.Module):
     """Constructs a content loss function based on the VGG19 network.
@@ -331,6 +560,18 @@ def discriminator_unet(**kwargs: Any) -> DiscriminatorUNet:
 
     return model
 
+def discriminator_unet_sa(**kwargs: Any) -> DiscriminatorUNet:
+    print("* Discriminator UNet with self attention")
+    model = DiscriminatorUNetsa(**kwargs)
+
+    return model
+
+
+def bsrgansa_x2(**kwargs: Any) -> BSRGAN:
+    print("* BSRGAN 2x with self attention")
+    model = BSRGANsa(upscale_factor=2, **kwargs)
+
+    return model
 
 def bsrgan_x2(**kwargs: Any) -> BSRGAN:
     model = BSRGAN(upscale_factor=2, **kwargs)

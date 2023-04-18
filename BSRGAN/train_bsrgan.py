@@ -32,8 +32,14 @@ from lpips import LPIPS
 from imgproc import random_crop
 from utils import load_state_dict, make_directory, save_checkpoint, AverageMeter, ProgressMeter
 
+import gc
+
 
 def main():
+
+    torch.cuda.empty_cache()
+    gc.collect()
+    
     # Initialize the number of training epochs
     start_epoch = 0
 
@@ -181,6 +187,7 @@ def main():
         if is_best:
           print("Saving best model...")
           mlflow.pytorch.log_model(g_model, "best_g_model")
+          mlflow.pytorch.log_model(ema_g_model, "best_ema_g_model")
           mlflow.pytorch.log_model(d_model, "best_d_model")
           print("Finished Saving")
         else:
@@ -188,6 +195,7 @@ def main():
 
         print("Saving last model...")
         mlflow.pytorch.log_model(g_model, "last_g_model")
+        mlflow.pytorch.log_model(ema_g_model, "last_ema_g_model")
         mlflow.pytorch.log_model(d_model, "last_d_model")
         print("Finished Saving")
 

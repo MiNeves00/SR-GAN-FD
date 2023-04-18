@@ -111,10 +111,11 @@ def main() -> None:
     # Get the number of test image files.
     total_files = int(len(file_names))
 
-    pathLR = "testImagesLR/"
+    pathLR = "testImagesLR"+bsrgan_config.modelType+"/"
     pathTest = "testImages/"
-    pathDiscriminatorGT = "testDiscriminatorGT/"
-    pathDiscriminatorSR = "testDiscriminatorSR/"
+    pathDiscriminatorGT = "testDiscriminatorGT"+bsrgan_config.modelType+"/"
+    pathDiscriminatorSR = "testDiscriminatorSR"+bsrgan_config.modelType+"/"
+    pathAttention = "testAttention/"
 
     print("Starting tests...")
 
@@ -165,14 +166,19 @@ def main() -> None:
           sr_loss_metrics += d_loss_sr.item()
           total_loss_metrics += d_loss.item()
 
-
-
           gt_image = imgproc.tensor_to_image(torch.sigmoid_(gt_output), False, False)
           mlflow.log_image(gt_image, pathDiscriminatorGT+file_names[index])
 
 
           sr_image = imgproc.tensor_to_image(torch.sigmoid_(sr_output), False, False)
           mlflow.log_image(sr_image, pathDiscriminatorSR+file_names[index])
+
+
+
+        if bsrgan_config.save_attention_layers:
+          attention_map = d_model.visualize_attention_map(sr_tensor.detach().clone())
+          attention_image = imgproc.tensor_to_image(attention_map, False, False)
+          mlflow.log_image(attention_image, pathAttention+file_names[index])
 
         # Cal IQA metrics
         psnr_metrics += psnr(sr_tensor, gt_tensor).item()
