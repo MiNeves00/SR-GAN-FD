@@ -33,6 +33,27 @@ model_names = sorted(
     name for name in model.__dict__ if
     name.islower() and not name.startswith("__") and callable(model.__dict__[name]))
 
+def build_model() -> [nn.Module, nn.Module]:
+    d_model = model.__dict__[bsrgan_config.d_model_arch_name](
+        in_channels=bsrgan_config.d_in_channels,
+        out_channels=bsrgan_config.d_out_channels,
+        channels=bsrgan_config.d_channels,
+    )
+    g_model = model.__dict__[bsrgan_config.g_model_arch_name](
+        in_channels=bsrgan_config.g_in_channels,
+        out_channels=bsrgan_config.g_out_channels,
+        channels=bsrgan_config.g_channels,
+        growth_channels=bsrgan_config.g_growth_channels,
+        num_rrdb=bsrgan_config.g_num_rrdb,
+    )
+    d_model = d_model.to(device=bsrgan_config.device)
+    g_model = g_model.to(device=bsrgan_config.device)
+
+    # Create an Exponential Moving Average Model
+    ema_avg = lambda averaged_model_parameter, model_parameter, num_averaged: (1 - bsrgan_config.model_ema_decay) * averaged_model_parameter + bsrgan_config.model_ema_decay * model_parameter
+
+    return d_model, g_model
+
 
 
 def main() -> None:
@@ -65,20 +86,35 @@ def main() -> None:
     # Initialize the data loader and load the first batch of data
     test_prefetcher.reset()
 
+
+    # Build models
+    d_model, g_model = build_model()
+    d_type_before = type(d_model)
+    g_type_before = type(g_model)
     
     # Load Generator Model
     g_model = mlflow.pytorch.load_model(bsrgan_config.g_model_weights_path)
     bsrgan_model = g_model.to(device=bsrgan_config.device)
     bsrgan_model.eval()
 
+    g_type_after = type(g_model)
+    if g_type_after is not g_type_before:
+            print("\n* DANGER, type of GENERATOR is changed when loading weights.")
+            print(f'Before: {g_type_before} | After: {g_type_after}\n')
+
     # Load Discriminator Model
-    if bsrgan_config.save_discriminator_eval:
+    if bsrgan_config.save_discriminator_eval or bsrgan_config.save_discriminator_attention_layers:
       d_model = mlflow.pytorch.load_model(bsrgan_config.d_model_weights_path)
       d_model = d_model.to(device=bsrgan_config.device)
 
       adversarial_criterion = nn.BCEWithLogitsLoss()
       adversarial_criterion = adversarial_criterion.to(device=bsrgan_config.device)
       d_model.eval()
+
+    d_type_after = type(d_model)
+    if d_type_after is not d_type_before:
+        print("\n* DANGER, type of DISCRIMINATOR is changed when loading weights.")
+        print(f'Before: {d_type_before} | After: {d_type_after}\n')
 
 
     # Initialize the sharpness evaluation function
@@ -112,9 +148,10 @@ def main() -> None:
     total_files = int(len(file_names))
 
     pathLR = "testImagesLR/"
-    pathTest = "testImages/"
-    pathDiscriminatorGT = "testDiscriminatorGT/"
-    pathDiscriminatorSR = "testDiscriminatorSR/"
+    pathTest = "testImages"+bsrgan_config.modelType+"/"
+    pathDiscriminatorGT = "testDiscriminatorGT"+bsrgan_config.modelType+"/"
+    pathDiscriminatorSR = "testDiscriminatorSR"+bsrgan_config.modelType+"/"
+    pathAttention = "testAttention"+bsrgan_config.modelType+"/"
 
     print("Starting tests...")
 
@@ -165,14 +202,21 @@ def main() -> None:
           sr_loss_metrics += d_loss_sr.item()
           total_loss_metrics += d_loss.item()
 
-
-
           gt_image = imgproc.tensor_to_image(torch.sigmoid_(gt_output), False, False)
           mlflow.log_image(gt_image, pathDiscriminatorGT+file_names[index])
 
 
           sr_image = imgproc.tensor_to_image(torch.sigmoid_(sr_output), False, False)
           mlflow.log_image(sr_image, pathDiscriminatorSR+file_names[index])
+
+
+
+        if bsrgan_config.save_discriminator_attention_layers: 
+          print(type(d_model))
+
+          attention_map = d_model.visualize_attention_map(sr_tensor.detach().clone())
+          attention_image = imgproc.tensor_to_image(attention_map, False, False)
+          mlflow.log_image(attention_image, pathAttention+file_names[index])
 
         # Cal IQA metrics
         psnr_metrics += psnr(sr_tensor, gt_tensor).item()
@@ -258,7 +302,7 @@ def main() -> None:
        metrics_dict = {"PSNR": avg_psnr, "SSIM": avg_ssim, "NIQE": avg_niqe, "LPIPS": avg_lpips, "GT Prob": avg_gt_prob_metrics, "SR Prob": avg_sr_prob_metrics, "GT Loss": avg_gt_loss_metrics, "SR Loss": avg_sr_loss_metrics, "Total Loss": avg_total_loss_metrics}
 
     if bsrgan_config.save_metrics:
-      mlflow.log_dict(metrics_dict,"testMetrics.json")
+      mlflow.log_dict(metrics_dict,"testMetrics"+bsrgan_config.modelType+".json")
 
     mlflow.end_run()
 

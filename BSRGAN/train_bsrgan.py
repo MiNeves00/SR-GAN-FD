@@ -51,6 +51,8 @@ def main():
     print("Load all datasets successfully.")
 
     d_model, g_model, ema_g_model = build_model()
+    d_type_before = type(d_model)
+    g_type_before = type(g_model)
     print(f"Build `{bsrgan_config.g_model_arch_name}` model successfully.")
 
     pixel_criterion, content_criterion, adversarial_criterion = define_loss()
@@ -66,15 +68,27 @@ def main():
     else:
         print("Pretrained d model weights not found.")
 
+    d_type_after = type(d_model)
+    if d_type_after is not d_type_before:
+        print("\n* DANGER, type of DISCRIMINATOR is changed when loading weights.")
+        print(f'Before: {d_type_before} | After: {d_type_after}\n')
+
     print("Check whether to load pretrained g model weights...")
     if bsrgan_config.pretrained_g_model_weights_path:
         if bsrgan_config.loadsFromMlrun:
             g_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_g_model_weights_path)
+            ema_g_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_ema_g_model_weights_path)
+            print(f"Loaded `{bsrgan_config.pretrained_ema_g_model_weights_path}` pretrained model weights successfully.")
         else:
             g_model = load_state_dict(g_model, bsrgan_config.pretrained_g_model_weights_path)
         print(f"Loaded `{bsrgan_config.pretrained_g_model_weights_path}` pretrained model weights successfully.")
     else:
         print("Pretrained g model weights not found.")
+
+    g_type_after = type(g_model)
+    if g_type_after is not g_type_before:
+            print("\n* DANGER, type of GENERATOR is changed when loading weights.")
+            print(f'Before: {g_type_before} | After: {g_type_after}\n')
 
     d_optimizer, g_optimizer = define_optimizer(d_model, g_model)
     print("Define all optimizer functions successfully.")

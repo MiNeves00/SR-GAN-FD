@@ -32,8 +32,14 @@ from lpips import LPIPS
 from imgproc import random_crop
 from utils import load_state_dict, make_directory, save_checkpoint, AverageMeter, ProgressMeter
 
+import gc
+
 
 def main():
+
+    torch.cuda.empty_cache()
+    gc.collect()
+    
     # Initialize the number of training epochs
     start_epoch = 0
 
@@ -45,6 +51,8 @@ def main():
     print("Load all datasets successfully.")
 
     d_model, g_model, ema_g_model = build_model()
+    d_type_before = type(d_model)
+    g_type_before = type(g_model)
     print(f"Build `{bsrgan_config.g_model_arch_name}` model successfully.")
 
     pixel_criterion, content_criterion, adversarial_criterion = define_loss()
@@ -60,15 +68,27 @@ def main():
     else:
         print("Pretrained d model weights not found.")
 
+    d_type_after = type(d_model)
+    if d_type_after is not d_type_before:
+        print("\n* DANGER, type of DISCRIMINATOR is changed when loading weights.")
+        print(f'Before: {d_type_before} | After: {d_type_after}\n')
+
     print("Check whether to load pretrained g model weights...")
     if bsrgan_config.pretrained_g_model_weights_path:
         if bsrgan_config.loadsFromMlrun:
             g_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_g_model_weights_path)
+            ema_g_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_ema_g_model_weights_path)
+            print(f"Loaded `{bsrgan_config.pretrained_ema_g_model_weights_path}` pretrained model weights successfully.")
         else:
             g_model = load_state_dict(g_model, bsrgan_config.pretrained_g_model_weights_path)
         print(f"Loaded `{bsrgan_config.pretrained_g_model_weights_path}` pretrained model weights successfully.")
     else:
         print("Pretrained g model weights not found.")
+
+    g_type_after = type(g_model)
+    if g_type_after is not g_type_before:
+            print("\n* DANGER, type of GENERATOR is changed when loading weights.")
+            print(f'Before: {g_type_before} | After: {g_type_after}\n')
 
     d_optimizer, g_optimizer = define_optimizer(d_model, g_model)
     print("Define all optimizer functions successfully.")
@@ -181,6 +201,7 @@ def main():
         if is_best:
           print("Saving best model...")
           mlflow.pytorch.log_model(g_model, "best_g_model")
+          mlflow.pytorch.log_model(ema_g_model, "best_ema_g_model")
           mlflow.pytorch.log_model(d_model, "best_d_model")
           print("Finished Saving")
         else:
@@ -188,6 +209,7 @@ def main():
 
         print("Saving last model...")
         mlflow.pytorch.log_model(g_model, "last_g_model")
+        mlflow.pytorch.log_model(ema_g_model, "last_ema_g_model")
         mlflow.pytorch.log_model(d_model, "last_d_model")
         print("Finished Saving")
 

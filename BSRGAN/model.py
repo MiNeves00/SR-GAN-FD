@@ -237,17 +237,15 @@ class DiscriminatorUNetsa(nn.Module):
         # Up-sampling
         down3 = F_torch.interpolate(down3, scale_factor=2, mode="bilinear", align_corners=False)
         up1 = self.up_block1(down3)
-        up1, _ = self.self_attention_up1(up1)  # Applying self-attention after the first up-sampling block
+        up1, self.attn_map_up1 = self.self_attention_up1(up1)  # Applying self-attention after the first up-sampling block
 
         up1 = torch.add(up1, down2)
         up1 = F_torch.interpolate(up1, scale_factor=2, mode="bilinear", align_corners=False)
         up2 = self.up_block2(up1)
-        #up2, _ = self.self_attention_up2(up2)  # Applying self-attention after the second up-sampling block
 
         up2 = torch.add(up2, down1)
         up2 = F_torch.interpolate(up2, scale_factor=2, mode="bilinear", align_corners=False)
         up3 = self.up_block3(up2)
-        #up3, _ = self.self_attention_up3(up3)  # Applying self-attention after the third up-sampling block
 
         up3 = torch.add(up3, out1)
 
@@ -257,22 +255,26 @@ class DiscriminatorUNetsa(nn.Module):
 
         return out
     
-    def visualize_attention_map(self, image: Tensor, attention_layer_id: int = 0) -> None:
+    def visualize_attention_map(self, image: Tensor, attention_layer_id: int = 0):
 
         # Pass input image through the model
         with torch.no_grad():
             _ = self.forward(image)
 
         if attention_layer_id == 0:
-            attention_map = self.attn_map3
+            attention_map = self.attn_map_up1
         else:
             raise ValueError("Invalid attention_layer_id, please choose a valid index for the self-attention layers.")
+
+        print(attention_map.shape)
 
         # Average pooling along the channel dimension (method 1)
         avg_attention_map = torch.mean(attention_map, dim=1)
 
         # Normalize the attention map to [0, 1]
         normalized_attention_map = (avg_attention_map - avg_attention_map.min()) / (avg_attention_map.max() - avg_attention_map.min())
+
+        print(normalized_attention_map.shape)
 
         return normalized_attention_map
     
@@ -439,14 +441,12 @@ class BSRGANsa(nn.Module):
 
         # Reconnect a layer of convolution block after upsampling.
         self.conv3 = nn.Sequential(
-            nn.Conv2d(channels, channels*4, (3, 3), (1, 1), (1, 1)),
+            nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1)),
             nn.LeakyReLU(0.2, True)
         )
 
-        self.self_attention3 = SelfAttention(channels*4)
-
         # Output layer.
-        self.conv4 = nn.Conv2d(channels*4, out_channels, (3, 3), (1, 1), (1, 1))
+        self.conv4 = nn.Conv2d(channels, out_channels, (3, 3), (1, 1), (1, 1))
 
         # Initialize all model layer
         for module in self.modules():
@@ -467,7 +467,6 @@ class BSRGANsa(nn.Module):
             out = self.upsampling2(F_torch.interpolate(out, scale_factor=2, mode="nearest"))
 
         out = self.conv3(out)
-        out, self.attn_map3 = self.self_attention3(out)
         out = self.conv4(out)
 
         out = torch.clamp_(out, 0.0, 1.0)
@@ -481,7 +480,7 @@ class BSRGANsa(nn.Module):
             _ = self.forward(image)
 
         if attention_layer_id == 0:
-            attention_map = self.attn_map3
+            attention_map = self.attn_map2
         else:
             raise ValueError("Invalid attention_layer_id, please choose a valid index for the self-attention layers.")
 
@@ -556,30 +555,33 @@ class ContentLoss(nn.Module):
 
 
 def discriminator_unet(**kwargs: Any) -> DiscriminatorUNet:
+    print("* Discriminator UNet")
     model = DiscriminatorUNet(**kwargs)
 
     return model
 
-def discriminator_unet_sa(**kwargs: Any) -> DiscriminatorUNet:
+def discriminator_unet_sa(**kwargs: Any) -> DiscriminatorUNetsa:
     print("* Discriminator UNet with self attention")
     model = DiscriminatorUNetsa(**kwargs)
 
     return model
 
 
-def bsrgansa_x2(**kwargs: Any) -> BSRGAN:
+def bsrgansa_x2(**kwargs: Any) -> BSRGANsa:
     print("* BSRGAN 2x with self attention")
     model = BSRGANsa(upscale_factor=2, **kwargs)
 
     return model
 
 def bsrgan_x2(**kwargs: Any) -> BSRGAN:
+    print("* BSRGAN 2x")
     model = BSRGAN(upscale_factor=2, **kwargs)
 
     return model
 
 
 def bsrgan_x4(**kwargs: Any) -> BSRGAN:
+    print("* BSRGAN 4x")
     model = BSRGAN(upscale_factor=4, **kwargs)
 
     return model
