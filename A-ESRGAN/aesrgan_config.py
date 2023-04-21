@@ -46,8 +46,8 @@ only_test_y_channel = True
 niqe_model_path = "./results/pretrained_models/niqe_model.mat"
 lpips_net = 'alex'
 # Model architecture name
-d_model_arch_name = "discriminator_unet_sa"
-g_model_arch_name = "bsrgan_x2"
+d_model_arch_name = "uNetDiscriminatorAesrgan"
+g_model_arch_name = "gen_rrdb2x"
 # DiscriminatorUNet configure
 d_in_channels = 3
 d_out_channels = 1
@@ -62,25 +62,25 @@ g_num_rrdb = 23
 upscale_factor = 2
 # Current configuration parameter method
 mode = "train"
-optimizing_metric = "LPIPS"
+optimizing_metric = "PSNR"
 loadsFromMlrun = False
 # Experiment name, easy to save weights and log files
-exp_name = "BSRGAN_x2-DIV2K_degradations"
+exp_name = "aesrgan_x2-DIV2K_degradations"
 
 # MLflow
-experience_name = 'BSRGANsa_x2_bubbles' # each name is associated with unique id
-#experience_name = 'BSRGAN_x2_AirfRANs'
-run_name = 'bsrgansa_fromML'
-run_id = '7f2f31a95ae444ee8a90d67caa2d72ad' # used to resume runs
+experience_name = 'aesrgan_x2_bubbles' # each name is associated with unique id
+#experience_name = 'aesrgan_x2_AirfRANs'
+run_name = 'aesrgan_fromZero_rrdbgen'
+run_id = '' # used to resume runs
 tags = ''
-description = 'BSRGAN with SelfAttention on discriminator only by GPT4. Upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. The generator and discriminator are from the pretrained models focus on LPIPS. Higher lr for discrminator than generator.'
+description = 'Aesrgan with SelfAttention on discriminator only, rrdb generator. Upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. The generator and discriminator are not pretrained focus on PSNR. Higher lr for discrminator than generator.'
 
 experiment_id = '589683858730322811' # for testing
 
 if mode == "train":
     print("Train")
     # Dataset address
-    '''train_gt_images_dir = f"./data/DIV2K/BSRGAN/train"
+    '''train_gt_images_dir = f"./data/DIV2K/aesrgan/train"
 
     test_gt_images_dir = f"./data/Set5/GTmod12"
     test_lr_images_dir = f"./data/Set5/LRbicx{upscale_factor}"'''
@@ -113,17 +113,17 @@ if mode == "train":
         pretrained_ema_g_model_weights_path = "./mlruns/589683858730322811/ef2b79c7176d439d815f3e95c0184b4b/artifacts/best_ema_g_model"
     else:
         print("Loading basic pretrained models...")
-        pretrained_d_model_weights_path = "./results/pretrained_models/Real-ESRGAN/Discriminator_x2-DFO2K-e37ff529.pth.tar"
-        pretrained_g_model_weights_path = "./results/pretrained_models/BSRGAN/BSRGAN_x2-DIV2K-62958d37.pth.tar"
-        #pretrained_d_model_weights_path = ""
-        #pretrained_g_model_weights_path = ""
+        #pretrained_d_model_weights_path = "./results/pretrained_models/Real-ESRGAN/Discriminator_x2-DFO2K-e37ff529.pth.tar"
+        #pretrained_g_model_weights_path = "./results/pretrained_models/aesrgan/aesrgan_x2-DIV2K-62958d37.pth.tar"
+        pretrained_d_model_weights_path = ""
+        pretrained_g_model_weights_path = ""
 
     # Incremental training and migration training
     resume_d_model_weights_path = ""
     resume_g_model_weights_path = ""
 
     # Total num epochs (1,600,000 iters)
-    epochs = 15
+    epochs = 20
     print("Total Epochs -> "+str(epochs))
 
     # Feature extraction layer parameter configuration
@@ -134,7 +134,7 @@ if mode == "train":
     # Loss function weight
     #pixel_weight = [1.0]
     #pixel_weight = [60.0, 40.0, 30.0, 20.0, 10.0]
-    pixel_weight = [20.0]
+    pixel_weight = [40.0]
     #content_weight = [0.1, 0.1, 1.0, 1.0, 1.0]
     #content_weight = [0.1, 0.2, 0.5, 1.0]
     content_weight = [1.0]
@@ -144,7 +144,7 @@ if mode == "train":
 
     # Optimizer parameter
     #model_lr = 5e-5
-    model_lr = 8e-5
+    model_lr = 2e-4
     discriminator_lr = 2e-4
     model_betas = (0.9, 0.999)
     model_eps = 1e-4  # Keep no nan
@@ -154,9 +154,9 @@ if mode == "train":
     model_ema_decay = 0.999
 
     # Dynamically adjust the learning rate policy
-    lr_scheduler_milestones = [int(epochs * 0.5),int(epochs * 0.7)]
+    lr_scheduler_milestones = [int(epochs * 0.2),int(epochs * 0.5),int(epochs * 0.7)]
     #lr_scheduler_gamma = 0.5
-    lr_scheduler_gamma = 0.85
+    lr_scheduler_gamma = 0.8
 
     # How many iterations to print the training result
     train_print_frequency = 50

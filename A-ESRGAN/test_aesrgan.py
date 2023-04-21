@@ -17,7 +17,7 @@ import cv2
 import torch
 from natsort import natsorted
 
-import bsrgan_config
+import aesrgan_config
 import mlflow
 import imgproc
 import model
@@ -34,23 +34,23 @@ model_names = sorted(
     name.islower() and not name.startswith("__") and callable(model.__dict__[name]))
 
 def build_model() -> [nn.Module, nn.Module]:
-    d_model = model.__dict__[bsrgan_config.d_model_arch_name](
-        in_channels=bsrgan_config.d_in_channels,
-        out_channels=bsrgan_config.d_out_channels,
-        channels=bsrgan_config.d_channels,
+    d_model = model.__dict__[aesrgan_config.d_model_arch_name](
+        in_channels=aesrgan_config.d_in_channels,
+        out_channels=aesrgan_config.d_out_channels,
+        channels=aesrgan_config.d_channels,
     )
-    g_model = model.__dict__[bsrgan_config.g_model_arch_name](
-        in_channels=bsrgan_config.g_in_channels,
-        out_channels=bsrgan_config.g_out_channels,
-        channels=bsrgan_config.g_channels,
-        growth_channels=bsrgan_config.g_growth_channels,
-        num_rrdb=bsrgan_config.g_num_rrdb,
+    g_model = model.__dict__[aesrgan_config.g_model_arch_name](
+        in_channels=aesrgan_config.g_in_channels,
+        out_channels=aesrgan_config.g_out_channels,
+        channels=aesrgan_config.g_channels,
+        growth_channels=aesrgan_config.g_growth_channels,
+        num_rrdb=aesrgan_config.g_num_rrdb,
     )
-    d_model = d_model.to(device=bsrgan_config.device)
-    g_model = g_model.to(device=bsrgan_config.device)
+    d_model = d_model.to(device=aesrgan_config.device)
+    g_model = g_model.to(device=aesrgan_config.device)
 
     # Create an Exponential Moving Average Model
-    ema_avg = lambda averaged_model_parameter, model_parameter, num_averaged: (1 - bsrgan_config.model_ema_decay) * averaged_model_parameter + bsrgan_config.model_ema_decay * model_parameter
+    ema_avg = lambda averaged_model_parameter, model_parameter, num_averaged: (1 - aesrgan_config.model_ema_decay) * averaged_model_parameter + aesrgan_config.model_ema_decay * model_parameter
 
     return d_model, g_model
 
@@ -59,20 +59,20 @@ def build_model() -> [nn.Module, nn.Module]:
 def main() -> None:
 
     # Set MLflow experiment & run
-    mlflow.set_experiment(bsrgan_config.experience_name)
+    mlflow.set_experiment(aesrgan_config.experience_name)
     try:
-      mlflow.start_run(run_id=bsrgan_config.run_id)
+      mlflow.start_run(run_id=aesrgan_config.run_id)
     except: # If last session was not ended
       mlflow.end_run()
-      mlflow.start_run(run_id=bsrgan_config.run_id)
+      mlflow.start_run(run_id=aesrgan_config.run_id)
 
-    print("Continuing run with id:" + str(bsrgan_config.run_id))
+    print("Continuing run with id:" + str(aesrgan_config.run_id))
 
     # Load Test Dataset
-    test_datasets = TrainValidImageDataset(bsrgan_config.gt_dir,
+    test_datasets = TrainValidImageDataset(aesrgan_config.gt_dir,
                                         0,
-                                        bsrgan_config.upscale_factor,
-                                        "Valid",bsrgan_config.degradation_process_parameters_dict)
+                                        aesrgan_config.upscale_factor,
+                                        "Valid",aesrgan_config.degradation_process_parameters_dict)
     
     test_dataloader = DataLoader(test_datasets,
                                  batch_size=1,
@@ -82,7 +82,7 @@ def main() -> None:
                                  drop_last=False,
                                  persistent_workers=True)
     
-    test_prefetcher = CUDAPrefetcher(test_dataloader, bsrgan_config.device)
+    test_prefetcher = CUDAPrefetcher(test_dataloader, aesrgan_config.device)
     # Initialize the data loader and load the first batch of data
     test_prefetcher.reset()
 
@@ -93,9 +93,9 @@ def main() -> None:
     g_type_before = type(g_model)
     
     # Load Generator Model
-    g_model = mlflow.pytorch.load_model(bsrgan_config.g_model_weights_path)
-    bsrgan_model = g_model.to(device=bsrgan_config.device)
-    bsrgan_model.eval()
+    g_model = mlflow.pytorch.load_model(aesrgan_config.g_model_weights_path)
+    aesrgan_model = g_model.to(device=aesrgan_config.device)
+    aesrgan_model.eval()
 
     g_type_after = type(g_model)
     if g_type_after is not g_type_before:
@@ -103,12 +103,12 @@ def main() -> None:
             print(f'Before: {g_type_before} | After: {g_type_after}\n')
 
     # Load Discriminator Model
-    if bsrgan_config.save_discriminator_eval or bsrgan_config.save_discriminator_attention_layers:
-      d_model = mlflow.pytorch.load_model(bsrgan_config.d_model_weights_path)
-      d_model = d_model.to(device=bsrgan_config.device)
+    if aesrgan_config.save_discriminator_eval or aesrgan_config.save_discriminator_attention_layers:
+      d_model = mlflow.pytorch.load_model(aesrgan_config.d_model_weights_path)
+      d_model = d_model.to(device=aesrgan_config.device)
 
       adversarial_criterion = nn.BCEWithLogitsLoss()
-      adversarial_criterion = adversarial_criterion.to(device=bsrgan_config.device)
+      adversarial_criterion = adversarial_criterion.to(device=aesrgan_config.device)
       d_model.eval()
 
     d_type_after = type(d_model)
@@ -118,16 +118,16 @@ def main() -> None:
 
 
     # Initialize the sharpness evaluation function
-    psnr = PSNR(bsrgan_config.upscale_factor, bsrgan_config.only_test_y_channel)
-    ssim = SSIM(bsrgan_config.upscale_factor, bsrgan_config.only_test_y_channel)
-    niqe = NIQE(bsrgan_config.upscale_factor, bsrgan_config.niqe_model_path)
+    psnr = PSNR(aesrgan_config.upscale_factor, aesrgan_config.only_test_y_channel)
+    ssim = SSIM(aesrgan_config.upscale_factor, aesrgan_config.only_test_y_channel)
+    niqe = NIQE(aesrgan_config.upscale_factor, aesrgan_config.niqe_model_path)
     lpips = LPIPS(net='alex')
 
     # Set the sharpness evaluation function calculation device to the specified model
-    psnr = psnr.to(device=bsrgan_config.device, non_blocking=True)
-    ssim = ssim.to(device=bsrgan_config.device, non_blocking=True)
-    niqe = niqe.to(device=bsrgan_config.device, non_blocking=True)
-    lpips = lpips.to(device=bsrgan_config.device, non_blocking=True)
+    psnr = psnr.to(device=aesrgan_config.device, non_blocking=True)
+    ssim = ssim.to(device=aesrgan_config.device, non_blocking=True)
+    niqe = niqe.to(device=aesrgan_config.device, non_blocking=True)
+    lpips = lpips.to(device=aesrgan_config.device, non_blocking=True)
 
     # Initialize IQA metrics
     psnr_metrics = 0.0
@@ -135,7 +135,7 @@ def main() -> None:
     niqe_metrics = 0.0
     lpips_metrics = 0.0
 
-    if bsrgan_config.save_discriminator_eval:
+    if aesrgan_config.save_discriminator_eval:
        sr_prob_metrics = 0.0
        gt_prob_metrics = 0.0
        gt_loss_metrics = 0.0
@@ -143,45 +143,45 @@ def main() -> None:
        total_loss_metrics = 0.0
 
     # Get a list of test image file names.
-    file_names = os.listdir(bsrgan_config.gt_dir)
+    file_names = os.listdir(aesrgan_config.gt_dir)
     # Get the number of test image files.
     total_files = int(len(file_names))
 
     pathLR = "testImagesLR/"
-    pathTest = "testImages"+bsrgan_config.modelType+"/"
-    pathDiscriminatorGT = "testDiscriminatorGT"+bsrgan_config.modelType+"/"
-    pathDiscriminatorSR = "testDiscriminatorSR"+bsrgan_config.modelType+"/"
-    pathAttention = "testAttention"+bsrgan_config.modelType+"/"
+    pathTest = "testImages"+aesrgan_config.modelType+"/"
+    pathDiscriminatorGT = "testDiscriminatorGT"+aesrgan_config.modelType+"/"
+    pathDiscriminatorSR = "testDiscriminatorSR"+aesrgan_config.modelType+"/"
+    pathAttention = "testAttention"+aesrgan_config.modelType+"/"
 
     print("Starting tests...")
 
     for index in range(total_files):
 
         batch_data = test_prefetcher.next()
-        gt_tensor = batch_data["gt"].to(device=bsrgan_config.device, non_blocking=True)
-        lr_tensor = batch_data["lr"].to(device=bsrgan_config.device, non_blocking=True)
+        gt_tensor = batch_data["gt"].to(device=aesrgan_config.device, non_blocking=True)
+        lr_tensor = batch_data["lr"].to(device=aesrgan_config.device, non_blocking=True)
 
-        if bsrgan_config.save_images:
+        if aesrgan_config.save_images:
           lr_image = imgproc.tensor_to_image(lr_tensor, False, False)
           #lr_image = cv2.cvtColor(lr_image, cv2.COLOR_RGB2BGR)
           mlflow.log_image(lr_image, pathLR+file_names[index])
 
         # Only reconstruct the Y channel image data.
         with torch.no_grad():
-            sr_tensor = bsrgan_model(lr_tensor)
+            sr_tensor = aesrgan_model(lr_tensor)
 
         # Save image
-        if bsrgan_config.save_images:
+        if aesrgan_config.save_images:
           sr_image = imgproc.tensor_to_image(sr_tensor, False, False)
           #sr_image = cv2.cvtColor(sr_image, cv2.COLOR_RGB2BGR)
           mlflow.log_image(sr_image, pathTest+file_names[index])
           #cv2.imwrite(sr_image_path, sr_image)
 
-        if bsrgan_config.save_discriminator_eval:
+        if aesrgan_config.save_discriminator_eval:
           # Discriminator output, fake is 0 which is black. Real is 1 which is white
           batch_size, _, height, width = gt_tensor.shape
-          real_label = torch.full([batch_size, 1, height, width], 1.0, dtype=gt_tensor.dtype, device=bsrgan_config.device)
-          fake_label = torch.full([batch_size, 1, height, width], 0.0, dtype=gt_tensor.dtype, device=bsrgan_config.device)
+          real_label = torch.full([batch_size, 1, height, width], 1.0, dtype=gt_tensor.dtype, device=aesrgan_config.device)
+          fake_label = torch.full([batch_size, 1, height, width], 0.0, dtype=gt_tensor.dtype, device=aesrgan_config.device)
 
           gt_output = d_model(gt_tensor)
 
@@ -211,7 +211,7 @@ def main() -> None:
 
 
 
-        if bsrgan_config.save_discriminator_attention_layers: 
+        if aesrgan_config.save_discriminator_attention_layers: 
           print(type(d_model))
 
           attention_map = d_model.visualize_attention_map(sr_tensor.detach().clone())
@@ -227,8 +227,8 @@ def main() -> None:
         gt_tensor = 2*gt_tensor - 1
 
         # LPIPS in subimages
-        if bsrgan_config.subdivision_lpips:
-          subdivisions_upscale = bsrgan_config.upscale_lpips_eval
+        if aesrgan_config.subdivision_lpips:
+          subdivisions_upscale = aesrgan_config.upscale_lpips_eval
 
           img_sr_chunks_height = torch.chunk(sr_tensor, 2, dim=2)
           # split each of the two height chunks into two equal parts along the width dimension
@@ -279,7 +279,7 @@ def main() -> None:
     avg_niqe = 100 if niqe_metrics / total_files > 100 else niqe_metrics / total_files
     avg_lpips = 100 if lpips_metrics / total_files > 100 else lpips_metrics / total_files
 
-    if bsrgan_config.save_discriminator_eval:
+    if aesrgan_config.save_discriminator_eval:
       avg_gt_prob_metrics = gt_prob_metrics / total_files
       avg_sr_prob_metrics = sr_prob_metrics / total_files
       avg_gt_loss_metrics = gt_loss_metrics / total_files
@@ -298,11 +298,11 @@ def main() -> None:
           f"LPIPS: {avg_lpips:4.2f} [100u]")
 
     metrics_dict = {"PSNR": avg_psnr, "SSIM": avg_ssim, "NIQE": avg_niqe, "LPIPS": avg_lpips}
-    if bsrgan_config.save_discriminator_eval:
+    if aesrgan_config.save_discriminator_eval:
        metrics_dict = {"PSNR": avg_psnr, "SSIM": avg_ssim, "NIQE": avg_niqe, "LPIPS": avg_lpips, "GT Prob": avg_gt_prob_metrics, "SR Prob": avg_sr_prob_metrics, "GT Loss": avg_gt_loss_metrics, "SR Loss": avg_sr_loss_metrics, "Total Loss": avg_total_loss_metrics}
 
-    if bsrgan_config.save_metrics:
-      mlflow.log_dict(metrics_dict,"testMetrics"+bsrgan_config.modelType+".json")
+    if aesrgan_config.save_metrics:
+      mlflow.log_dict(metrics_dict,"testMetrics"+aesrgan_config.modelType+".json")
 
     mlflow.end_run()
 

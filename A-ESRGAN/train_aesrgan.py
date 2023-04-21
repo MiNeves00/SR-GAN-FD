@@ -24,7 +24,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import mlflow
 
-import bsrgan_config
+import aesrgan_config
 import model
 from dataset import CUDAPrefetcher, TrainValidImageDataset, TestImageDataset
 from image_quality_assessment import PSNR, SSIM, NIQE
@@ -53,18 +53,18 @@ def main():
     d_model, g_model, ema_g_model = build_model()
     d_type_before = type(d_model)
     g_type_before = type(g_model)
-    print(f"Build `{bsrgan_config.g_model_arch_name}` model successfully.")
+    print(f"Build `{aesrgan_config.g_model_arch_name}` model successfully.")
 
     pixel_criterion, content_criterion, adversarial_criterion = define_loss()
     print("Define all loss functions successfully.")
 
     print("Check whether to load pretrained d model weights...")
-    if bsrgan_config.pretrained_d_model_weights_path:
-        if bsrgan_config.loadsFromMlrun:
-            d_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_d_model_weights_path)
+    if aesrgan_config.pretrained_d_model_weights_path:
+        if aesrgan_config.loadsFromMlrun:
+            d_model = mlflow.pytorch.load_model(aesrgan_config.pretrained_d_model_weights_path)
         else:
-            d_model = load_state_dict(d_model, bsrgan_config.pretrained_d_model_weights_path)
-        print(f"Loaded `{bsrgan_config.pretrained_d_model_weights_path}` pretrained model weights successfully.")
+            d_model = load_state_dict(d_model, aesrgan_config.pretrained_d_model_weights_path)
+        print(f"Loaded `{aesrgan_config.pretrained_d_model_weights_path}` pretrained model weights successfully.")
     else:
         print("Pretrained d model weights not found.")
 
@@ -74,14 +74,14 @@ def main():
         print(f'Before: {d_type_before} | After: {d_type_after}\n')
 
     print("Check whether to load pretrained g model weights...")
-    if bsrgan_config.pretrained_g_model_weights_path:
-        if bsrgan_config.loadsFromMlrun:
-            g_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_g_model_weights_path)
-            ema_g_model = mlflow.pytorch.load_model(bsrgan_config.pretrained_ema_g_model_weights_path)
-            print(f"Loaded `{bsrgan_config.pretrained_ema_g_model_weights_path}` pretrained model weights successfully.")
+    if aesrgan_config.pretrained_g_model_weights_path:
+        if aesrgan_config.loadsFromMlrun:
+            g_model = mlflow.pytorch.load_model(aesrgan_config.pretrained_g_model_weights_path)
+            ema_g_model = mlflow.pytorch.load_model(aesrgan_config.pretrained_ema_g_model_weights_path)
+            print(f"Loaded `{aesrgan_config.pretrained_ema_g_model_weights_path}` pretrained model weights successfully.")
         else:
-            g_model = load_state_dict(g_model, bsrgan_config.pretrained_g_model_weights_path)
-        print(f"Loaded `{bsrgan_config.pretrained_g_model_weights_path}` pretrained model weights successfully.")
+            g_model = load_state_dict(g_model, aesrgan_config.pretrained_g_model_weights_path)
+        print(f"Loaded `{aesrgan_config.pretrained_g_model_weights_path}` pretrained model weights successfully.")
     else:
         print("Pretrained g model weights not found.")
 
@@ -97,58 +97,58 @@ def main():
     print("Define all optimizer scheduler functions successfully.")
 
     # Create a experiment results
-    samples_dir = os.path.join("samples", bsrgan_config.exp_name)
-    results_dir = os.path.join("results", bsrgan_config.exp_name)
+    samples_dir = os.path.join("samples", aesrgan_config.exp_name)
+    results_dir = os.path.join("results", aesrgan_config.exp_name)
     make_directory(samples_dir)
     make_directory(results_dir)
 
     # Create training process log file
-    writer = SummaryWriter(os.path.join("samples", "logs", bsrgan_config.exp_name))
+    writer = SummaryWriter(os.path.join("samples", "logs", aesrgan_config.exp_name))
 
     # Initialize the gradient scaler
     scaler = amp.GradScaler()
 
     # Create an IQA evaluation model
-    psnr_model = PSNR(bsrgan_config.upscale_factor, bsrgan_config.only_test_y_channel)
-    ssim_model = SSIM(bsrgan_config.upscale_factor, bsrgan_config.only_test_y_channel)
-    niqe_model = NIQE(bsrgan_config.upscale_factor, bsrgan_config.niqe_model_path)
-    lpips_model = LPIPS(net=bsrgan_config.lpips_net)
+    psnr_model = PSNR(aesrgan_config.upscale_factor, aesrgan_config.only_test_y_channel)
+    ssim_model = SSIM(aesrgan_config.upscale_factor, aesrgan_config.only_test_y_channel)
+    niqe_model = NIQE(aesrgan_config.upscale_factor, aesrgan_config.niqe_model_path)
+    lpips_model = LPIPS(net=aesrgan_config.lpips_net)
 
     # Transfer the IQA model to the specified device
-    psnr_model = psnr_model.to(device=bsrgan_config.device)
-    ssim_model = ssim_model.to(device=bsrgan_config.device)
-    niqe_model = niqe_model.to(device=bsrgan_config.device, non_blocking=True)
-    lpips_model = lpips_model.to(device=bsrgan_config.device, non_blocking=True)
+    psnr_model = psnr_model.to(device=aesrgan_config.device)
+    ssim_model = ssim_model.to(device=aesrgan_config.device)
+    niqe_model = niqe_model.to(device=aesrgan_config.device, non_blocking=True)
+    lpips_model = lpips_model.to(device=aesrgan_config.device, non_blocking=True)
 
 
 
     # Start MLFlow Tracking
     try:
-        mlflow.set_experiment(bsrgan_config.experience_name)
+        mlflow.set_experiment(aesrgan_config.experience_name)
     except:
-        experiment_id= mlflow.create_experiment(bsrgan_config.experience_name)
-        print("New Experiment created with name: " + bsrgan_config.experience_name + " and ID: " + str(experiment_id))
+        experiment_id= mlflow.create_experiment(aesrgan_config.experience_name)
+        print("New Experiment created with name: " + aesrgan_config.experience_name + " and ID: " + str(experiment_id))
 
     # Start MLflow run & log parameters 
     try:
-      mlflow.start_run(run_name=bsrgan_config.run_name, tags=bsrgan_config.tags, description=bsrgan_config.description)
+      mlflow.start_run(run_name=aesrgan_config.run_name, tags=aesrgan_config.tags, description=aesrgan_config.description)
     except: # If last session was not ended
       mlflow.end_run()
-      mlflow.start_run(run_name=bsrgan_config.run_name, tags=bsrgan_config.tags, description=bsrgan_config.description)
+      mlflow.start_run(run_name=aesrgan_config.run_name, tags=aesrgan_config.tags, description=aesrgan_config.description)
     
     run = mlflow.active_run()
     print("Active run_id: {}".format(run.info.run_id))
 
-    mlflow.log_params({'exp_name':bsrgan_config.exp_name,'d_arch_name':bsrgan_config.d_model_arch_name,'g_arch_name':bsrgan_config.g_model_arch_name,'d_in_channels':bsrgan_config.d_in_channels,'d_out_channels':bsrgan_config.d_out_channels,'d_channels':bsrgan_config.d_channels,'g_in_channels':bsrgan_config.g_in_channels,'g_out_channels':bsrgan_config.g_out_channels,'g_channels':bsrgan_config.g_channels,'growth_channels':bsrgan_config.g_growth_channels,'num_blocks':bsrgan_config.g_num_rrdb,'upscale_factor':bsrgan_config.upscale_factor,'gt_image_size':bsrgan_config.gt_image_size,'batch_size':bsrgan_config.batch_size,'train_gt_images_dir':bsrgan_config.train_gt_images_dir,'valid_gt_images_dir':bsrgan_config.valid_gt_images_dir,
-                       'pretrained_d_model_weights_path':bsrgan_config.pretrained_d_model_weights_path,'pretrained_g_model_weights_path':bsrgan_config.pretrained_g_model_weights_path,'resume_d_model_weights_path':bsrgan_config.resume_d_model_weights_path,'resume_g_model_weights_path':bsrgan_config.resume_g_model_weights_path,'epochs':bsrgan_config.epochs,'pixel_weight':bsrgan_config.pixel_weight,'content_weight':bsrgan_config.content_weight,'adversarial_weight':bsrgan_config.adversarial_weight,'feature_model_extractor_nodes':bsrgan_config.feature_model_extractor_nodes,'feature_model_normalize_mean':bsrgan_config.feature_model_normalize_mean,'feature_model_normalize_std':bsrgan_config.feature_model_normalize_std,'model_lr':bsrgan_config.model_lr,'model_betas':bsrgan_config.model_betas,'model_eps':bsrgan_config.model_eps,'model_weight_decay':bsrgan_config.model_weight_decay,'model_ema_decay':bsrgan_config.model_ema_decay,'lr_scheduler_milestones':bsrgan_config.lr_scheduler_milestones,'lr_scheduler_gamma':bsrgan_config.lr_scheduler_gamma,'lpips_net':bsrgan_config.lpips_net,'niqe_model_path':bsrgan_config.niqe_model_path})
+    mlflow.log_params({'exp_name':aesrgan_config.exp_name,'d_arch_name':aesrgan_config.d_model_arch_name,'g_arch_name':aesrgan_config.g_model_arch_name,'d_in_channels':aesrgan_config.d_in_channels,'d_out_channels':aesrgan_config.d_out_channels,'d_channels':aesrgan_config.d_channels,'g_in_channels':aesrgan_config.g_in_channels,'g_out_channels':aesrgan_config.g_out_channels,'g_channels':aesrgan_config.g_channels,'growth_channels':aesrgan_config.g_growth_channels,'num_blocks':aesrgan_config.g_num_rrdb,'upscale_factor':aesrgan_config.upscale_factor,'gt_image_size':aesrgan_config.gt_image_size,'batch_size':aesrgan_config.batch_size,'train_gt_images_dir':aesrgan_config.train_gt_images_dir,'valid_gt_images_dir':aesrgan_config.valid_gt_images_dir,
+                       'pretrained_d_model_weights_path':aesrgan_config.pretrained_d_model_weights_path,'pretrained_g_model_weights_path':aesrgan_config.pretrained_g_model_weights_path,'resume_d_model_weights_path':aesrgan_config.resume_d_model_weights_path,'resume_g_model_weights_path':aesrgan_config.resume_g_model_weights_path,'epochs':aesrgan_config.epochs,'pixel_weight':aesrgan_config.pixel_weight,'content_weight':aesrgan_config.content_weight,'adversarial_weight':aesrgan_config.adversarial_weight,'feature_model_extractor_nodes':aesrgan_config.feature_model_extractor_nodes,'feature_model_normalize_mean':aesrgan_config.feature_model_normalize_mean,'feature_model_normalize_std':aesrgan_config.feature_model_normalize_std,'model_lr':aesrgan_config.model_lr,'model_betas':aesrgan_config.model_betas,'model_eps':aesrgan_config.model_eps,'model_weight_decay':aesrgan_config.model_weight_decay,'model_ema_decay':aesrgan_config.model_ema_decay,'lr_scheduler_milestones':aesrgan_config.lr_scheduler_milestones,'lr_scheduler_gamma':aesrgan_config.lr_scheduler_gamma,'lpips_net':aesrgan_config.lpips_net,'niqe_model_path':aesrgan_config.niqe_model_path})
 
     best_decision_metric = 1.0
 
-    if bsrgan_config.optimizing_metric == "Discriminator SR Prob":
+    if aesrgan_config.optimizing_metric == "Discriminator SR Prob":
         best_decision_metric_gt = 1.0
         best_decision_metric_sr = 1.0
 
-    for epoch in range(start_epoch, bsrgan_config.epochs):
+    for epoch in range(start_epoch, aesrgan_config.epochs):
         pixel_loss, content_loss, adversarial_loss, d_gt_probabilities, d_sr_probabilities = train(d_model,
               g_model,
               ema_g_model,
@@ -161,8 +161,8 @@ def main():
               epoch,
               scaler,
               writer,
-              bsrgan_config.device,
-              bsrgan_config.train_print_frequency)
+              aesrgan_config.device,
+              aesrgan_config.train_print_frequency)
         psnr_val, ssim_val, niqe_val, lpips_val = validate(g_model,
                               valid_prefetcher,
                               epoch,
@@ -181,21 +181,21 @@ def main():
         g_scheduler.step()
 
         # Save the best model with the highest LPIPS score in validation dataset
-        print("Deciding based on "+bsrgan_config.optimizing_metric+" value...")
-        if bsrgan_config.optimizing_metric == "LPIPS":
+        print("Deciding based on "+aesrgan_config.optimizing_metric+" value...")
+        if aesrgan_config.optimizing_metric == "LPIPS":
             decision_metric = lpips_val
             is_best = decision_metric < best_decision_metric
             best_decision_metric = min(decision_metric, best_decision_metric)
-        elif bsrgan_config.optimizing_metric == "PSNR":
+        elif aesrgan_config.optimizing_metric == "PSNR":
             decision_metric = psnr_val
             is_best = decision_metric > best_decision_metric
             best_decision_metric = max(decision_metric, best_decision_metric)
-        elif  bsrgan_config.optimizing_metric == "Discriminator SR Prob":
+        elif  aesrgan_config.optimizing_metric == "Discriminator SR Prob":
             decision_metric_sr = d_sr_probabilities
             is_best = decision_metric_sr < best_decision_metric_sr
             best_decision_metric = min(decision_metric, best_decision_metric)
         else:
-            print("Optimizing metric is inadaquate: "+bsrgan_config.optimizing_metric)
+            print("Optimizing metric is inadaquate: "+aesrgan_config.optimizing_metric)
             exit()
 
         if is_best:
@@ -234,24 +234,24 @@ def log_epoch(g_pixel_loss, g_content_loss, g_adversarial_loss, d_gt_probabiliti
 
 def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
     # Load train, test and valid datasets
-    train_datasets = TrainValidImageDataset(bsrgan_config.train_gt_images_dir,
-                                            bsrgan_config.crop_image_size,
-                                            bsrgan_config.upscale_factor,
+    train_datasets = TrainValidImageDataset(aesrgan_config.train_gt_images_dir,
+                                            aesrgan_config.crop_image_size,
+                                            aesrgan_config.upscale_factor,
                                             "Train",
-                                            bsrgan_config.degradation_process_parameters_dict)
-    '''test_datasets = TestImageDataset(bsrgan_config.test_gt_images_dir, bsrgan_config.test_lr_images_dir)'''
+                                            aesrgan_config.degradation_process_parameters_dict)
+    '''test_datasets = TestImageDataset(aesrgan_config.test_gt_images_dir, aesrgan_config.test_lr_images_dir)'''
 
-    valid_datasets = TrainValidImageDataset(bsrgan_config.valid_gt_images_dir,
-                                            bsrgan_config.crop_image_size,
-                                            bsrgan_config.upscale_factor,
+    valid_datasets = TrainValidImageDataset(aesrgan_config.valid_gt_images_dir,
+                                            aesrgan_config.crop_image_size,
+                                            aesrgan_config.upscale_factor,
                                             "Valid",
-                                            bsrgan_config.degradation_process_parameters_dict)
+                                            aesrgan_config.degradation_process_parameters_dict)
 
     # Generator all dataloader
     train_dataloader = DataLoader(train_datasets,
-                                  batch_size=bsrgan_config.batch_size,
+                                  batch_size=aesrgan_config.batch_size,
                                   shuffle=True,
-                                  num_workers=bsrgan_config.num_workers,
+                                  num_workers=aesrgan_config.num_workers,
                                   pin_memory=True,
                                   drop_last=True,
                                   persistent_workers=True)
@@ -264,30 +264,20 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
                                  persistent_workers=True)
 
     # Place all data on the preprocessing data loader
-    train_prefetcher = CUDAPrefetcher(train_dataloader, bsrgan_config.device)
-    valid_prefetcher = CUDAPrefetcher(valid_dataloader, bsrgan_config.device)
+    train_prefetcher = CUDAPrefetcher(train_dataloader, aesrgan_config.device)
+    valid_prefetcher = CUDAPrefetcher(valid_dataloader, aesrgan_config.device)
 
     return train_prefetcher, valid_prefetcher
 
 
 def build_model() -> [nn.Module, nn.Module, nn.Module]:
-    d_model = model.__dict__[bsrgan_config.d_model_arch_name](
-        in_channels=bsrgan_config.d_in_channels,
-        out_channels=bsrgan_config.d_out_channels,
-        channels=bsrgan_config.d_channels,
-    )
-    g_model = model.__dict__[bsrgan_config.g_model_arch_name](
-        in_channels=bsrgan_config.g_in_channels,
-        out_channels=bsrgan_config.g_out_channels,
-        channels=bsrgan_config.g_channels,
-        growth_channels=bsrgan_config.g_growth_channels,
-        num_rrdb=bsrgan_config.g_num_rrdb,
-    )
-    d_model = d_model.to(device=bsrgan_config.device)
-    g_model = g_model.to(device=bsrgan_config.device)
+    d_model = model.__dict__[aesrgan_config.d_model_arch_name]()
+    g_model = model.__dict__[aesrgan_config.g_model_arch_name]()
+    d_model = d_model.to(device=aesrgan_config.device)
+    g_model = g_model.to(device=aesrgan_config.device)
 
     # Create an Exponential Moving Average Model
-    ema_avg = lambda averaged_model_parameter, model_parameter, num_averaged: (1 - bsrgan_config.model_ema_decay) * averaged_model_parameter + bsrgan_config.model_ema_decay * model_parameter
+    ema_avg = lambda averaged_model_parameter, model_parameter, num_averaged: (1 - aesrgan_config.model_ema_decay) * averaged_model_parameter + aesrgan_config.model_ema_decay * model_parameter
     ema_g_model = AveragedModel(g_model, avg_fn=ema_avg)
 
     return d_model, g_model, ema_g_model
@@ -295,30 +285,30 @@ def build_model() -> [nn.Module, nn.Module, nn.Module]:
 
 def define_loss() -> [nn.L1Loss, model.ContentLoss, nn.BCEWithLogitsLoss]:
     pixel_criterion = nn.L1Loss()
-    content_criterion = model.ContentLoss(bsrgan_config.feature_model_extractor_nodes,
-                                          bsrgan_config.feature_model_normalize_mean,
-                                          bsrgan_config.feature_model_normalize_std)
+    content_criterion = model.ContentLoss(aesrgan_config.feature_model_extractor_nodes,
+                                          aesrgan_config.feature_model_normalize_mean,
+                                          aesrgan_config.feature_model_normalize_std)
     adversarial_criterion = nn.BCEWithLogitsLoss()
 
     # Transfer to CUDA
-    pixel_criterion = pixel_criterion.to(device=bsrgan_config.device)
-    content_criterion = content_criterion.to(device=bsrgan_config.device)
-    adversarial_criterion = adversarial_criterion.to(device=bsrgan_config.device)
+    pixel_criterion = pixel_criterion.to(device=aesrgan_config.device)
+    content_criterion = content_criterion.to(device=aesrgan_config.device)
+    adversarial_criterion = adversarial_criterion.to(device=aesrgan_config.device)
 
     return pixel_criterion, content_criterion, adversarial_criterion
 
 
 def define_optimizer(d_model, g_model) -> [optim.Adam, optim.Adam]:
     d_optimizer = optim.Adam(d_model.parameters(),
-                             bsrgan_config.discriminator_lr,
-                             bsrgan_config.model_betas,
-                             bsrgan_config.model_eps,
-                             bsrgan_config.model_weight_decay)
+                             aesrgan_config.discriminator_lr,
+                             aesrgan_config.model_betas,
+                             aesrgan_config.model_eps,
+                             aesrgan_config.model_weight_decay)
     g_optimizer = optim.Adam(g_model.parameters(),
-                             bsrgan_config.model_lr,
-                             bsrgan_config.model_betas,
-                             bsrgan_config.model_eps,
-                             bsrgan_config.model_weight_decay)
+                             aesrgan_config.model_lr,
+                             aesrgan_config.model_betas,
+                             aesrgan_config.model_eps,
+                             aesrgan_config.model_weight_decay)
 
     return d_optimizer, g_optimizer
 
@@ -328,11 +318,11 @@ def define_scheduler(
         g_optimizer: optim.Adam
 ) -> [lr_scheduler.MultiStepLR, lr_scheduler.MultiStepLR]:
     d_scheduler = lr_scheduler.MultiStepLR(d_optimizer,
-                                           bsrgan_config.lr_scheduler_milestones,
-                                           bsrgan_config.lr_scheduler_gamma)
+                                           aesrgan_config.lr_scheduler_milestones,
+                                           aesrgan_config.lr_scheduler_gamma)
     g_scheduler = lr_scheduler.MultiStepLR(g_optimizer,
-                                           bsrgan_config.lr_scheduler_milestones,
-                                           bsrgan_config.lr_scheduler_gamma)
+                                           aesrgan_config.lr_scheduler_milestones,
+                                           aesrgan_config.lr_scheduler_gamma)
     return d_scheduler, g_scheduler
 
 
@@ -391,12 +381,12 @@ def train(
         # Transfer in-memory data to CUDA devices to speed up training
         gt = batch_data["gt"].to(device=device, non_blocking=True)
         lr = batch_data["lr"].to(device=device, non_blocking=True)
-        pixel_weight = torch.Tensor(bsrgan_config.pixel_weight).to(device=device)
-        content_weight = torch.Tensor(bsrgan_config.content_weight).to(device=device)
-        adversarial_weight = torch.Tensor(bsrgan_config.adversarial_weight).to(device=device)
+        pixel_weight = torch.Tensor(aesrgan_config.pixel_weight).to(device=device)
+        content_weight = torch.Tensor(aesrgan_config.content_weight).to(device=device)
+        adversarial_weight = torch.Tensor(aesrgan_config.adversarial_weight).to(device=device)
 
         # Crop image patch
-        gt, lr = random_crop(gt, lr, bsrgan_config.gt_image_size, bsrgan_config.upscale_factor)
+        gt, lr = random_crop(gt, lr, aesrgan_config.gt_image_size, aesrgan_config.upscale_factor)
 
         # Set the real sample label to 1, and the false sample label to 0
         batch_size, _, height, width = gt.shape
@@ -457,7 +447,7 @@ def train(
             g_loss = pixel_loss + content_loss + adversarial_loss
         
         
-        if bsrgan_config.train_generator:
+        if aesrgan_config.train_generator:
             # Call the gradient scaling function in the mixed precision API to
             # back-propagate the gradient information of the fake samples
             scaler.scale(g_loss).backward()
@@ -533,9 +523,9 @@ def validate(
 
     print_freq = 1
     if mode == "Valid":
-      print_freq = bsrgan_config.valid_print_frequency
+      print_freq = aesrgan_config.valid_print_frequency
     else:
-      print_freq = bsrgan_config.test_print_frequency
+      print_freq = aesrgan_config.test_print_frequency
 
     # Set the model as validation model
     bsrnet_model.eval()
@@ -556,8 +546,8 @@ def validate(
     with torch.no_grad():
         while batch_data is not None:
             # Load batches of data
-            gt = batch_data["gt"].to(device=bsrgan_config.device, non_blocking=True)
-            lr = batch_data["lr"].to(device=bsrgan_config.device, non_blocking=True)
+            gt = batch_data["gt"].to(device=aesrgan_config.device, non_blocking=True)
+            lr = batch_data["lr"].to(device=aesrgan_config.device, non_blocking=True)
 
             # inference
             sr = bsrnet_model(lr)
