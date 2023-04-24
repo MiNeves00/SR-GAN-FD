@@ -77,8 +77,11 @@ def main():
     if aesrgan_config.pretrained_g_model_weights_path:
         if aesrgan_config.loadsFromMlrun:
             g_model = mlflow.pytorch.load_model(aesrgan_config.pretrained_g_model_weights_path)
-            ema_g_model = mlflow.pytorch.load_model(aesrgan_config.pretrained_ema_g_model_weights_path)
-            print(f"Loaded `{aesrgan_config.pretrained_ema_g_model_weights_path}` pretrained model weights successfully.")
+            try:
+                ema_g_model = mlflow.pytorch.load_model(aesrgan_config.pretrained_ema_g_model_weights_path)
+                print(f"Loaded `{aesrgan_config.pretrained_ema_g_model_weights_path}` pretrained model weights successfully.")
+            except:
+                print(f"Failed to load ema_g_model! Path = `{aesrgan_config.pretrained_ema_g_model_weights_path}`")
         else:
             g_model = load_state_dict(g_model, aesrgan_config.pretrained_g_model_weights_path)
         print(f"Loaded `{aesrgan_config.pretrained_g_model_weights_path}` pretrained model weights successfully.")

@@ -27,7 +27,7 @@ from torch.nn import init as init
 from basicsr.utils.registry import ARCH_REGISTRY
 
 __all__ = [
-    "ContentLoss","uNetDiscriminatorAesrgan", "gen_rpa2x", "gen_rrdb2x", "content_loss",
+    "ContentLoss","uNetDiscriminatorAesrgan", "gen_rpa2x", "gen_rrdb2x", "bsrgan_x2", "content_loss",
 
 ]
 
@@ -144,7 +144,7 @@ class Generator_RPA(nn.Module):
     """
 
     def __init__(self, num_in_ch=3, num_out_ch=3, scale=2, num_feat=64, num_block=20):
-        super(Generator, self).__init__()
+        super(Generator_RPA, self).__init__()
         self.scale = scale
         self.conv1 = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
         # residual pixel-attention blocks
@@ -178,7 +178,7 @@ class Generator_RRDB(nn.Module):
     """
 
     def __init__(self, num_in_ch=3, num_out_ch=3, scale=4, num_feat=64, num_block=23, num_grow_ch=32):
-        super(_Generator, self).__init__()
+        super(Generator_RRDB, self).__init__()
         self.scale = scale
         num_in_ch *= 16 // (scale)**2
         self.conv1 = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
@@ -248,7 +248,7 @@ class add_attn(nn.Module):
 
         y = sigm_psi_f.expand_as(x) * x
         W_y = self.W(y)
-        return W_y
+        return W_y, sigm_psi_f
 
 
 # @ARCH_REGISTRY.register()
@@ -319,9 +319,9 @@ class UNetDiscriminatorAesrgan(nn.Module):
         gated = F.leaky_relu(self.gating(x3), negative_slope=0.2, inplace=True)
 
         # Attention
-        attn1 = self.attn_1(x2, gated)
-        attn2 = self.attn_2(x1, gated)
-        attn3 = self.attn_3(x0, gated)
+        attn1, self.ly1 = self.attn_1(x2, gated)
+        attn2, self.ly2 = self.attn_2(x1, gated)
+        attn3, self.ly3 = self.attn_3(x0, gated)
 
         # upsample
         x3 = self.cat_1(attn1, x3)
@@ -337,11 +337,14 @@ class UNetDiscriminatorAesrgan(nn.Module):
         out = self.conv9(out)
 
         return out
+    
+    def getAttentionLayers(self):
+        return self.ly1, self.ly2, self.ly3
 
 
 def uNetDiscriminatorAesrgan() -> UNetDiscriminatorAesrgan:
     print("* UNetDiscriminatorAesrgan")
-    model = UNetDiscriminatorAesrgan()
+    model = UNetDiscriminatorAesrgan(3)
 
     return model
 
@@ -408,3 +411,145 @@ def content_loss(**kwargs) -> ContentLoss:
     content_loss_model = ContentLoss(**kwargs)
 
     return content_loss_model
+
+
+##################################  
+
+class _ResidualDenseBlock(nn.Module):
+    """Achieves densely connected convolutional layers.
+    `Densely Connected Convolutional Networks <https://arxiv.org/pdf/1608.06993v5.pdf>` paper.
+
+    Args:
+        channels (int): The number of channels in the input image.
+        growth_channels (int): The number of channels that increase in each layer of convolution.
+    """
+
+    def __init__(self, channels: int, growth_channels: int) -> None:
+        super(_ResidualDenseBlock, self).__init__()
+        self.conv1 = nn.Conv2d(channels + growth_channels * 0, growth_channels, (3, 3), (1, 1), (1, 1))
+        self.conv2 = nn.Conv2d(channels + growth_channels * 1, growth_channels, (3, 3), (1, 1), (1, 1))
+        self.conv3 = nn.Conv2d(channels + growth_channels * 2, growth_channels, (3, 3), (1, 1), (1, 1))
+        self.conv4 = nn.Conv2d(channels + growth_channels * 3, growth_channels, (3, 3), (1, 1), (1, 1))
+        self.conv5 = nn.Conv2d(channels + growth_channels * 4, channels, (3, 3), (1, 1), (1, 1))
+
+        self.leaky_relu = nn.LeakyReLU(0.2, True)
+        self.identity = nn.Identity()
+
+    def forward(self, x: Tensor) -> Tensor:
+        identity = x
+
+        out1 = self.leaky_relu(self.conv1(x))
+        out2 = self.leaky_relu(self.conv2(torch.cat([x, out1], 1)))
+        out3 = self.leaky_relu(self.conv3(torch.cat([x, out1, out2], 1)))
+        out4 = self.leaky_relu(self.conv4(torch.cat([x, out1, out2, out3], 1)))
+        out5 = self.identity(self.conv5(torch.cat([x, out1, out2, out3, out4], 1)))
+        out = torch.mul(out5, 0.2)
+        out = torch.add(out, identity)
+
+        return out
+
+class _ResidualResidualDenseBlock(nn.Module):
+    """Multi-layer residual dense convolution block.
+
+    Args:
+        channels (int): The number of channels in the input image.
+        growth_channels (int): The number of channels that increase in each layer of convolution.
+    """
+
+    def __init__(self, channels: int, growth_channels: int) -> None:
+        super(_ResidualResidualDenseBlock, self).__init__()
+        self.rdb1 = _ResidualDenseBlock(channels, growth_channels)
+        self.rdb2 = _ResidualDenseBlock(channels, growth_channels)
+        self.rdb3 = _ResidualDenseBlock(channels, growth_channels)
+
+    def forward(self, x: Tensor) -> Tensor:
+        identity = x
+
+        out = self.rdb1(x)
+        out = self.rdb2(out)
+        out = self.rdb3(out)
+        out = torch.mul(out, 0.2)
+        out = torch.add(out, identity)
+
+        return out
+    
+class BSRGAN(nn.Module):
+    def __init__(
+            self,
+            in_channels: int = 3,
+            out_channels: int = 3,
+            channels: int = 64,
+            growth_channels: int = 32,
+            num_rrdb: int = 23,
+            upscale_factor: int = 4,
+    ) -> None:
+        super(BSRGAN, self).__init__()
+        self.upscale_factor = upscale_factor
+
+        # The first layer of convolutional layer.
+        self.conv1 = nn.Conv2d(in_channels, channels, (3, 3), (1, 1), (1, 1))
+
+        # Feature extraction backbone network.
+        trunk = []
+        for _ in range(num_rrdb):
+            trunk.append(_ResidualResidualDenseBlock(channels, growth_channels))
+        self.trunk = nn.Sequential(*trunk)
+
+        # After the feature extraction network, reconnect a layer of convolutional blocks.
+        self.conv2 = nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1))
+
+        # Upsampling convolutional layer.
+        self.upsampling1 = nn.Sequential(
+            nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1)),
+            nn.LeakyReLU(0.2, True)
+        )
+
+        if upscale_factor == 4:
+            self.upsampling2 = nn.Sequential(
+                nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1)),
+                nn.LeakyReLU(0.2, True)
+            )
+
+        # Reconnect a layer of convolution block after upsampling.
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1)),
+            nn.LeakyReLU(0.2, True)
+        )
+
+        # Output layer.
+        self.conv4 = nn.Conv2d(channels, out_channels, (3, 3), (1, 1), (1, 1))
+
+        # Initialize all model layer
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                nn.init.kaiming_normal_(module.weight)
+                module.weight.data *= 0.1
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+
+    # The model should be defined in the Torch.script method.
+    def _forward_impl(self, x: Tensor) -> Tensor:
+        out1 = self.conv1(x)
+        out = self.trunk(out1)
+        out2 = self.conv2(out)
+        out = torch.add(out1, out2)
+
+        out = self.upsampling1(F.interpolate(out, scale_factor=2, mode="nearest"))
+        if self.upscale_factor == 4:
+            out = self.upsampling2(F.interpolate(out, scale_factor=2, mode="nearest"))
+
+        out = self.conv3(out)
+        out = self.conv4(out)
+
+        out = torch.clamp_(out, 0.0, 1.0)
+
+        return out
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self._forward_impl(x)
+
+def bsrgan_x2(**kwargs: Any) -> BSRGAN:
+    print("* BSRGAN 2x")
+    model = BSRGAN(upscale_factor=2, **kwargs)
+
+    return model

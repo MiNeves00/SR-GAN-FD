@@ -34,18 +34,8 @@ model_names = sorted(
     name.islower() and not name.startswith("__") and callable(model.__dict__[name]))
 
 def build_model() -> [nn.Module, nn.Module]:
-    d_model = model.__dict__[aesrgan_config.d_model_arch_name](
-        in_channels=aesrgan_config.d_in_channels,
-        out_channels=aesrgan_config.d_out_channels,
-        channels=aesrgan_config.d_channels,
-    )
-    g_model = model.__dict__[aesrgan_config.g_model_arch_name](
-        in_channels=aesrgan_config.g_in_channels,
-        out_channels=aesrgan_config.g_out_channels,
-        channels=aesrgan_config.g_channels,
-        growth_channels=aesrgan_config.g_growth_channels,
-        num_rrdb=aesrgan_config.g_num_rrdb,
-    )
+    d_model = model.__dict__[aesrgan_config.d_model_arch_name]()
+    g_model = model.__dict__[aesrgan_config.g_model_arch_name]()
     d_model = d_model.to(device=aesrgan_config.device)
     g_model = g_model.to(device=aesrgan_config.device)
 
@@ -177,7 +167,7 @@ def main() -> None:
           mlflow.log_image(sr_image, pathTest+file_names[index])
           #cv2.imwrite(sr_image_path, sr_image)
 
-        if aesrgan_config.save_discriminator_eval:
+        if aesrgan_config.save_discriminator_eval or aesrgan_config.save_discriminator_attention_layers:
           # Discriminator output, fake is 0 which is black. Real is 1 which is white
           batch_size, _, height, width = gt_tensor.shape
           real_label = torch.full([batch_size, 1, height, width], 1.0, dtype=gt_tensor.dtype, device=aesrgan_config.device)
@@ -188,35 +178,38 @@ def main() -> None:
           d_loss_hr = adversarial_criterion(gt_output, real_label)
 
           sr_output = d_model(sr_tensor.detach().clone())
+
+          ly1,ly2,ly3 = d_model.getAttentionLayers()
+
+          if aesrgan_config.save_discriminator_attention_layers: 
+            attention_image1 = imgproc.tensor_to_image(ly1, False, False)
+            attention_image2 = imgproc.tensor_to_image(ly2, False, False)
+            attention_image3 = imgproc.tensor_to_image(ly3, False, False)
+            mlflow.log_image(attention_image1, pathAttention+file_names[index]+"_ly1.jpg")
+            mlflow.log_image(attention_image2, pathAttention+file_names[index]+"_ly2.jpg")
+            mlflow.log_image(attention_image3, pathAttention+file_names[index]+"_ly3.jpg")
+            exit()
           
-          d_loss_sr = adversarial_criterion(sr_output, fake_label)
+          if aesrgan_config.save_discriminator_eval:
+            d_loss_sr = adversarial_criterion(sr_output, fake_label)
 
-          d_loss = d_loss_hr + d_loss_sr
+            d_loss = d_loss_hr + d_loss_sr
 
-          d_gt_probability = torch.mean(torch.sigmoid_(gt_output.detach()))
-          d_sr_probability = torch.mean(torch.sigmoid_(sr_output.detach()))
+            d_gt_probability = torch.mean(torch.sigmoid_(gt_output.detach()))
+            d_sr_probability = torch.mean(torch.sigmoid_(sr_output.detach()))
 
-          gt_prob_metrics += d_gt_probability.item()
-          sr_prob_metrics += d_sr_probability.item()
-          gt_loss_metrics += d_loss_hr.item()
-          sr_loss_metrics += d_loss_sr.item()
-          total_loss_metrics += d_loss.item()
+            gt_prob_metrics += d_gt_probability.item()
+            sr_prob_metrics += d_sr_probability.item()
+            gt_loss_metrics += d_loss_hr.item()
+            sr_loss_metrics += d_loss_sr.item()
+            total_loss_metrics += d_loss.item()
 
-          gt_image = imgproc.tensor_to_image(torch.sigmoid_(gt_output), False, False)
-          mlflow.log_image(gt_image, pathDiscriminatorGT+file_names[index])
-
-
-          sr_image = imgproc.tensor_to_image(torch.sigmoid_(sr_output), False, False)
-          mlflow.log_image(sr_image, pathDiscriminatorSR+file_names[index])
+            gt_image = imgproc.tensor_to_image(torch.sigmoid_(gt_output), False, False)
+            mlflow.log_image(gt_image, pathDiscriminatorGT+file_names[index])
 
 
-
-        if aesrgan_config.save_discriminator_attention_layers: 
-          print(type(d_model))
-
-          attention_map = d_model.visualize_attention_map(sr_tensor.detach().clone())
-          attention_image = imgproc.tensor_to_image(attention_map, False, False)
-          mlflow.log_image(attention_image, pathAttention+file_names[index])
+            sr_image = imgproc.tensor_to_image(torch.sigmoid_(sr_output), False, False)
+            mlflow.log_image(sr_image, pathDiscriminatorSR+file_names[index])
 
         # Cal IQA metrics
         psnr_metrics += psnr(sr_tensor, gt_tensor).item()
