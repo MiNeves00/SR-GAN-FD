@@ -47,7 +47,7 @@ niqe_model_path = "./results/pretrained_models/niqe_model.mat"
 lpips_net = 'alex'
 # Model architecture name
 d_model_arch_name = "uNetDiscriminatorAesrgan"
-g_model_arch_name = "bsrgan_x2"
+g_model_arch_name = "bsrgantrans_x2"
 # DiscriminatorUNet configure
 d_in_channels = 3
 d_out_channels = 1
@@ -63,17 +63,17 @@ upscale_factor = 2
 # Current configuration parameter method
 mode = "train"
 optimizing_metric = "LPIPS"
-loadsFromMlrun = True
+loadsFromMlrun = False
 # Experiment name, easy to save weights and log files
 exp_name = "aesrgan_x2-DIV2K_degradations"
 
 # MLflow
 experience_name = 'aesrgan_x2_bubbles' # each name is associated with unique id
 #experience_name = 'aesrgan_x2_AirfRANs'
-run_name = 'aesrgan_fromML_bsrgangen_cropsizesmall'
+run_name = 'aesrgan_fromZero_bsrgangen_transformer'
 run_id = '' # used to resume runs
 tags = ''
-description = 'Aesrgan with Attention on discriminator only, rrdb generator. Upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. The discriminator and generator are pretrained id=5d82a9ae6de14b5b8e97b82c14e26a21. The generator is from bsrgan. Higher lr for discrminator than generator. Focus on LPIPS. Crop size of 320, gt_image_size=144.'
+description = 'Aesrgan with Attention on discriminator only, rrdb generator. Upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. The discriminator and generator are from scratch. The generator is from bsrgan. Higher lr for discrminator than generator. Focus on LPIPS. Crop size of 150, gt_image_size=120.'
 
 experiment_id = '925855187305526810' # for testing
 
@@ -96,11 +96,11 @@ if mode == "train":
     #train_gt_images_dir = f"../data/AirfRANs/vtuNUT/train"
     #valid_gt_images_dir = f"../data/AirfRANs/vtuNUT/valid"
 
-    crop_image_size = 320
-    #crop_image_size = 150
-    gt_image_size = int(72 * upscale_factor)
-    batch_size = 16
-    num_workers = 8
+    #crop_image_size = 320
+    crop_image_size = 150
+    gt_image_size = int(60 * upscale_factor)
+    batch_size = 8
+    num_workers = 4
 
     # Load the address of the pretrained model
     #pretrained_d_model_weights_path = ""
@@ -125,7 +125,7 @@ if mode == "train":
     resume_g_model_weights_path = ""
 
     # Total num epochs (1,600,000 iters)
-    epochs = 15
+    epochs = 100
     print("Total Epochs -> "+str(epochs))
 
     # Feature extraction layer parameter configuration
@@ -136,7 +136,7 @@ if mode == "train":
     # Loss function weight
     #pixel_weight = [1.0]
     #pixel_weight = [60.0, 40.0, 30.0, 20.0, 10.0]
-    pixel_weight = [1.0]
+    pixel_weight = [40.0]
     #content_weight = [0.1, 0.1, 1.0, 1.0, 1.0]
     #content_weight = [0.1, 0.2, 0.5, 1.0]
     content_weight = [1.0]
@@ -146,7 +146,7 @@ if mode == "train":
 
     # Optimizer parameter
     #model_lr = 5e-5
-    model_lr = 3e-5
+    model_lr = 1e-4
     discriminator_lr = 5e-5
     model_betas = (0.9, 0.999)
     model_eps = 1e-4  # Keep no nan
@@ -156,13 +156,13 @@ if mode == "train":
     model_ema_decay = 0.999
 
     # Dynamically adjust the learning rate policy
-    lr_scheduler_milestones = [int(epochs * 0.4),int(epochs * 0.7)]
+    lr_scheduler_milestones = [int(epochs * 0.1),int(epochs * 0.2),int(epochs * 0.6)]
     #lr_scheduler_gamma = 0.5
-    lr_scheduler_gamma = 0.85
+    lr_scheduler_gamma = 0.7
 
     # How many iterations to print the training result
-    train_print_frequency = 50
-    valid_print_frequency = 200
+    train_print_frequency = 100
+    valid_print_frequency = 400
 
 if mode == "test":
     print("Test")
@@ -170,11 +170,11 @@ if mode == "test":
 
     upscale_lpips_eval = 2
 
-    save_images = True
-    save_discriminator_eval = True
-    save_metrics = True
+    save_images = False
+    save_discriminator_eval = False
+    save_metrics = False
     subdivision_lpips = False
-    save_discriminator_attention_layers = True
+    save_discriminator_attention_layers = False
     modelType = "last"
 
     print(f' save_images: {save_images}\n save_discriminator_eval: {save_discriminator_eval}\n save_metrics: {save_metrics}\n subdivision_lpips: {subdivision_lpips}\n save_discriminator_attention_layers: {save_discriminator_attention_layers}\n modelType: {modelType}\n')

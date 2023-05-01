@@ -21,6 +21,7 @@ from torch.optim import lr_scheduler
 from torch.optim.swa_utils import AveragedModel
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from torchsummary import summary
 
 import mlflow
 
@@ -110,6 +111,10 @@ def main():
 
     # Initialize the gradient scaler
     scaler = amp.GradScaler()
+
+    #summary(g_model, input_size=(3, 320, 240), batch_size=16)
+    #summary(d_model, input_size=(3, 640, 480), batch_size=16)
+    #exit()
 
     # Create an IQA evaluation model
     psnr_model = PSNR(aesrgan_config.upscale_factor, aesrgan_config.only_test_y_channel)
@@ -261,7 +266,7 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
     valid_dataloader = DataLoader(valid_datasets,
                                  batch_size=1,
                                  shuffle=False,
-                                 num_workers=1,
+                                 num_workers=aesrgan_config.num_workers,
                                  pin_memory=True,
                                  drop_last=False,
                                  persistent_workers=True)
@@ -552,13 +557,17 @@ def validate(
             gt = batch_data["gt"].to(device=aesrgan_config.device, non_blocking=True)
             lr = batch_data["lr"].to(device=aesrgan_config.device, non_blocking=True)
 
+            # Crop image patch
+            gt, lr = random_crop(gt, lr, aesrgan_config.gt_image_size, aesrgan_config.upscale_factor)
+
             # inference
             sr = bsrnet_model(lr)
 
             # Calculate the image IQA
             psnr = psnr_model(sr, gt)
             ssim = ssim_model(sr, gt)
-            niqe = niqe_model(sr)
+            #niqe = niqe_model(sr)
+            niqe = torch.tensor(10.0)
             sr_tensor = 2*sr - 1 # Normalize from [0,1] to [-1,1]
             gt_tensor = 2*gt - 1
             lpips = lpips_model(sr, gt)
