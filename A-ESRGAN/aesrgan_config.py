@@ -70,10 +70,10 @@ exp_name = "aesrgan_x2-DIV2K_degradations"
 # MLflow
 experience_name = 'aesrgan_x2_bubbles' # each name is associated with unique id
 #experience_name = 'aesrgan_x2_AirfRANs'
-run_name = 'aesrgan_fromML_bsrgangen'
+run_name = 'aesrgan_fromML_bsrgangen_cropsizesmall'
 run_id = '' # used to resume runs
 tags = ''
-description = 'Aesrgan with Attention on discriminator only, rrdb generator. Upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. The discriminator is pretrained id=740bc124db104b438f484a69315f2c85. The generator is from bsrgan id=d5402dc21ed14d969116d7e14cabd9db. Higher lr for discrminator than generator. Focus on LPIPS'
+description = 'Aesrgan with Attention on discriminator only, rrdb generator. Upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. The discriminator and generator are pretrained id=5d82a9ae6de14b5b8e97b82c14e26a21. The generator is from bsrgan. Higher lr for discrminator than generator. Focus on LPIPS. Crop size of 320, gt_image_size=144.'
 
 experiment_id = '925855187305526810' # for testing
 
@@ -100,7 +100,7 @@ if mode == "train":
     #crop_image_size = 150
     gt_image_size = int(72 * upscale_factor)
     batch_size = 16
-    num_workers = 1
+    num_workers = 8
 
     # Load the address of the pretrained model
     #pretrained_d_model_weights_path = ""
@@ -108,11 +108,11 @@ if mode == "train":
 
     if loadsFromMlrun:
         print("Loading Mlrun models...")
-        pretrained_d_model_weights_path = "./mlruns/925855187305526810/740bc124db104b438f484a69315f2c85/artifacts/last_d_model"
+        pretrained_d_model_weights_path = "./mlruns/925855187305526810/5d82a9ae6de14b5b8e97b82c14e26a21/artifacts/best_d_model"
         #pretrained_g_model_weights_path = "./mlruns/925855187305526810/b7456b7e121a4528bed31a769b8ffd2e/artifacts/best_g_model"
-        pretrained_g_model_weights_path = "../BSRGAN/mlruns/815542563266978794/d5402dc21ed14d969116d7e14cabd9db/artifacts/best_g_model"
-        #pretrained_ema_g_model_weights_path = "./mlruns/925855187305526810/b7456b7e121a4528bed31a769b8ffd2e/artifacts/best_ema_g_model"
-        pretrained_ema_g_model_weights_path = ""
+        pretrained_g_model_weights_path = "./mlruns/925855187305526810/5d82a9ae6de14b5b8e97b82c14e26a21/artifacts/best_g_model"
+        pretrained_ema_g_model_weights_path = "./mlruns/925855187305526810/5d82a9ae6de14b5b8e97b82c14e26a21/artifacts/best_ema_g_model"
+        #pretrained_ema_g_model_weights_path = ""
     else:
         print("Loading basic pretrained models...")
         #pretrained_d_model_weights_path = "./results/pretrained_models/Real-ESRGAN/Discriminator_x2-DFO2K-e37ff529.pth.tar"
@@ -125,7 +125,7 @@ if mode == "train":
     resume_g_model_weights_path = ""
 
     # Total num epochs (1,600,000 iters)
-    epochs = 20
+    epochs = 15
     print("Total Epochs -> "+str(epochs))
 
     # Feature extraction layer parameter configuration
@@ -142,12 +142,12 @@ if mode == "train":
     content_weight = [1.0]
     #adversarial_weight = [0.1]
     #adversarial_weight = [0.1, 0.2, 0.3, 0.5]
-    adversarial_weight = [0.5]
+    adversarial_weight = [0.1]
 
     # Optimizer parameter
     #model_lr = 5e-5
-    model_lr = 1e-4
-    discriminator_lr = 1e-4
+    model_lr = 3e-5
+    discriminator_lr = 5e-5
     model_betas = (0.9, 0.999)
     model_eps = 1e-4  # Keep no nan
     model_weight_decay = 0.0
@@ -156,7 +156,7 @@ if mode == "train":
     model_ema_decay = 0.999
 
     # Dynamically adjust the learning rate policy
-    lr_scheduler_milestones = [int(epochs * 0.4),int(epochs * 0.8)]
+    lr_scheduler_milestones = [int(epochs * 0.4),int(epochs * 0.7)]
     #lr_scheduler_gamma = 0.5
     lr_scheduler_gamma = 0.85
 
@@ -175,7 +175,7 @@ if mode == "test":
     save_metrics = True
     subdivision_lpips = False
     save_discriminator_attention_layers = True
-    modelType = "best"
+    modelType = "last"
 
     print(f' save_images: {save_images}\n save_discriminator_eval: {save_discriminator_eval}\n save_metrics: {save_metrics}\n subdivision_lpips: {subdivision_lpips}\n save_discriminator_attention_layers: {save_discriminator_attention_layers}\n modelType: {modelType}\n')
 

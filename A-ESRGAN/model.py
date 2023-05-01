@@ -553,3 +553,87 @@ def bsrgan_x2(**kwargs: Any) -> BSRGAN:
     model = BSRGAN(upscale_factor=2, **kwargs)
 
     return model
+
+##################
+
+
+class BSRGANsa(nn.Module):
+    def __init__(
+            self,
+            in_channels: int = 3,
+            out_channels: int = 3,
+            channels: int = 64,
+            growth_channels: int = 32,
+            num_rrdb: int = 23,
+            upscale_factor: int = 4,
+    ) -> None:
+        super(BSRGAN, self).__init__()
+        self.upscale_factor = upscale_factor
+
+        # The first layer of convolutional layer.
+        self.conv1 = nn.Conv2d(in_channels, channels, (3, 3), (1, 1), (1, 1))
+
+        # Feature extraction backbone network.
+        trunk = []
+        for _ in range(num_rrdb):
+            trunk.append(_ResidualResidualDenseBlock(channels, growth_channels))
+        self.trunk = nn.Sequential(*trunk)
+
+        # After the feature extraction network, reconnect a layer of convolutional blocks.
+        self.conv2 = nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1))
+
+        # Upsampling convolutional layer.
+        self.upsampling1 = nn.Sequential(
+            nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1)),
+            nn.LeakyReLU(0.2, True)
+        )
+
+        if upscale_factor == 4:
+            self.upsampling2 = nn.Sequential(
+                nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1)),
+                nn.LeakyReLU(0.2, True)
+            )
+
+        # Reconnect a layer of convolution block after upsampling.
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1)),
+            nn.LeakyReLU(0.2, True)
+        )
+
+        # Output layer.
+        self.conv4 = nn.Conv2d(channels, out_channels, (3, 3), (1, 1), (1, 1))
+
+        # Initialize all model layer
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                nn.init.kaiming_normal_(module.weight)
+                module.weight.data *= 0.1
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+
+    # The model should be defined in the Torch.script method.
+    def _forward_impl(self, x: Tensor) -> Tensor:
+        out1 = self.conv1(x)
+        out = self.trunk(out1)
+        out2 = self.conv2(out)
+        out = torch.add(out1, out2)
+
+        out = self.upsampling1(F.interpolate(out, scale_factor=2, mode="nearest"))
+        if self.upscale_factor == 4:
+            out = self.upsampling2(F.interpolate(out, scale_factor=2, mode="nearest"))
+
+        out = self.conv3(out)
+        out = self.conv4(out)
+
+        out = torch.clamp_(out, 0.0, 1.0)
+
+        return out
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self._forward_impl(x)
+
+def bsrgan_x2(**kwargs: Any) -> BSRGAN:
+    print("* BSRGAN 2x")
+    model = BSRGAN(upscale_factor=2, **kwargs)
+
+    return model

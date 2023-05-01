@@ -188,7 +188,6 @@ def main() -> None:
             mlflow.log_image(attention_image1, pathAttention+file_names[index]+"_ly1.jpg")
             mlflow.log_image(attention_image2, pathAttention+file_names[index]+"_ly2.jpg")
             mlflow.log_image(attention_image3, pathAttention+file_names[index]+"_ly3.jpg")
-            exit()
           
           if aesrgan_config.save_discriminator_eval:
             d_loss_sr = adversarial_criterion(sr_output, fake_label)
