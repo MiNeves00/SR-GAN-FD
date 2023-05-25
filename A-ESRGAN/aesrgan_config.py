@@ -61,19 +61,20 @@ g_num_rrdb = 23
 # Upscale factor
 upscale_factor = 2
 # Current configuration parameter method
-mode = "train"
+mode = "test"
 optimizing_metric = "LPIPS"
-loadsFromMlrun = False
+loadsFromMlrun = True
+architecture_g_change = False
 # Experiment name, easy to save weights and log files
 exp_name = "aesrgan_x2-DIV2K_degradations"
 
 # MLflow
 experience_name = 'aesrgan_x2_bubbles' # each name is associated with unique id
 #experience_name = 'aesrgan_x2_AirfRANs'
-run_name = 'aesrgan_fromZero_bsrgangen_transformer'
-run_id = '' # used to resume runs
+run_name = 'aesrgan_fromML_bsrgangen_transformer'
+run_id = '943d48d4dad64627bb87d2a9d65db732' # used to resume runs
 tags = ''
-description = 'Aesrgan with Attention on discriminator only, rrdb generator. Upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. The discriminator and generator are from scratch. The generator is from bsrgan. Higher lr for discrminator than generator. Focus on LPIPS. Crop size of 150, gt_image_size=120.'
+description = 'Aesrgan with Attention on discriminator, rrdb with Transformer generator. Upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. The discriminator and generator are from id=af1f832a64a2491aab001948ef80a3fa. The generator is from bsrgan. Higher lr for discrminator than generator. Focus on LPIPS. Crop size of 150, gt_image_size=120.'
 
 experiment_id = '925855187305526810' # for testing
 
@@ -108,10 +109,10 @@ if mode == "train":
 
     if loadsFromMlrun:
         print("Loading Mlrun models...")
-        pretrained_d_model_weights_path = "./mlruns/925855187305526810/5d82a9ae6de14b5b8e97b82c14e26a21/artifacts/best_d_model"
+        pretrained_d_model_weights_path = "./mlruns/925855187305526810/af1f832a64a2491aab001948ef80a3fa/artifacts/best_d_model"
         #pretrained_g_model_weights_path = "./mlruns/925855187305526810/b7456b7e121a4528bed31a769b8ffd2e/artifacts/best_g_model"
-        pretrained_g_model_weights_path = "./mlruns/925855187305526810/5d82a9ae6de14b5b8e97b82c14e26a21/artifacts/best_g_model"
-        pretrained_ema_g_model_weights_path = "./mlruns/925855187305526810/5d82a9ae6de14b5b8e97b82c14e26a21/artifacts/best_ema_g_model"
+        pretrained_g_model_weights_path = "./mlruns/925855187305526810/af1f832a64a2491aab001948ef80a3fa/artifacts/best_g_model"
+        pretrained_ema_g_model_weights_path = "./mlruns/925855187305526810/af1f832a64a2491aab001948ef80a3fa/artifacts/best_ema_g_model"
         #pretrained_ema_g_model_weights_path = ""
     else:
         print("Loading basic pretrained models...")
@@ -136,7 +137,7 @@ if mode == "train":
     # Loss function weight
     #pixel_weight = [1.0]
     #pixel_weight = [60.0, 40.0, 30.0, 20.0, 10.0]
-    pixel_weight = [40.0]
+    pixel_weight = [10.0]
     #content_weight = [0.1, 0.1, 1.0, 1.0, 1.0]
     #content_weight = [0.1, 0.2, 0.5, 1.0]
     content_weight = [1.0]
@@ -146,8 +147,8 @@ if mode == "train":
 
     # Optimizer parameter
     #model_lr = 5e-5
-    model_lr = 1e-4
-    discriminator_lr = 5e-5
+    model_lr = 5e-5
+    discriminator_lr = 1e-5
     model_betas = (0.9, 0.999)
     model_eps = 1e-4  # Keep no nan
     model_weight_decay = 0.0
@@ -156,9 +157,9 @@ if mode == "train":
     model_ema_decay = 0.999
 
     # Dynamically adjust the learning rate policy
-    lr_scheduler_milestones = [int(epochs * 0.1),int(epochs * 0.2),int(epochs * 0.6)]
+    lr_scheduler_milestones = [int(epochs * 0.15),int(epochs * 0.3),int(epochs * 0.6)]
     #lr_scheduler_gamma = 0.5
-    lr_scheduler_gamma = 0.7
+    lr_scheduler_gamma = 0.8
 
     # How many iterations to print the training result
     train_print_frequency = 100
@@ -170,19 +171,20 @@ if mode == "test":
 
     upscale_lpips_eval = 2
 
-    save_images = False
-    save_discriminator_eval = False
-    save_metrics = False
+    save_images = True
+    save_discriminator_eval = True
+    save_metrics = True
     subdivision_lpips = False
-    save_discriminator_attention_layers = False
-    modelType = "last"
+    save_discriminator_attention_layers = True
+    modelType = "best"
 
     print(f' save_images: {save_images}\n save_discriminator_eval: {save_discriminator_eval}\n save_metrics: {save_metrics}\n subdivision_lpips: {subdivision_lpips}\n save_discriminator_attention_layers: {save_discriminator_attention_layers}\n modelType: {modelType}\n')
 
     
 
     #gt_dir = f"../data/AirfRANs/vtuNUT/test"
-    gt_dir = f"../data/Bubbles/test"
+    #gt_dir = f"../data/Bubbles/test"
+    gt_dir = f"../data/DICOM/DICOM_Frame_Sequence"
 
     g_model_weights_path = f"./mlruns/"+experiment_id+"/"+run_id+"/artifacts/"+modelType+"_g_model"
 

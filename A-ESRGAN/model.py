@@ -635,13 +635,6 @@ class BSRGANsa(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         return self._forward_impl(x)
 
-def bsrgan_x2(**kwargs: Any) -> BSRGAN:
-    print("* BSRGAN 2x")
-    model = BSRGAN(upscale_factor=2, **kwargs)
-
-    return model
-
-
 
 
 ##################
@@ -670,9 +663,21 @@ class BSRGANtrans(nn.Module):
             trunk.append(_ResidualResidualDenseBlock(channels, growth_channels))
         self.trunk = nn.Sequential(*trunk)
 
+        # Downsampling convolutional layer.
+        self.downsamplingTrans = nn.Sequential(
+            nn.Conv2d(channels, channels, (3, 3), (2, 2), (1, 1)),
+            nn.LeakyReLU(0.2, True)
+        )
+
         # Transformer layers
         self.transformer_layer = TransformerEncoderLayer(d_model=channels, nhead=4)
         self.transformer_encoder = TransformerEncoder(self.transformer_layer, num_layers=2)
+
+        # Upsampling convolutional layer.
+        self.upsamplingTrans = nn.Sequential(
+            nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1)),
+            nn.LeakyReLU(0.2, True)
+        )
 
 
         # After the feature extraction network, reconnect a layer of convolutional blocks.
@@ -709,13 +714,19 @@ class BSRGANtrans(nn.Module):
 
     # The model should be defined in the Torch.script method.
     def _forward_impl(self, x: Tensor) -> Tensor:
+
+        x = x.to(self.conv1.weight.dtype)
         out1 = self.conv1(x)
         out = self.trunk(out1)
+
+        out=self.downsamplingTrans(out)
 
         # Add the transformer layers after the feature extraction backbone network (trunk)
         out = out.permute(0, 2, 3, 1).flatten(1, 2)  # Reshape x for the transformer input
         out = self.transformer_encoder(out)
-        out = out.view(out.size(0), x.size(2), x.size(3), self.channels).permute(0, 3, 1, 2)  # Reshape x back to the original shape
+        out = out.view(out.size(0), x.size(2)//2, x.size(3)//2, self.channels).permute(0, 3, 1, 2)  # Reshape x back to the original shape
+        
+        out = self.upsamplingTrans(F.interpolate(out, scale_factor=2, mode="nearest"))
 
         out2 = self.conv2(out)
         out = torch.add(out1, out2)

@@ -78,8 +78,18 @@ def main():
     if aesrgan_config.pretrained_g_model_weights_path:
         if aesrgan_config.loadsFromMlrun:
             g_model = mlflow.pytorch.load_model(aesrgan_config.pretrained_g_model_weights_path)
+            if aesrgan_config.architecture_g_change:
+                g_model2 = model.BSRGANtrans(upscale_factor=2)
+                g_model2.load_state_dict(g_model.state_dict(), strict=False)
+                g_model=g_model2
             try:
                 ema_g_model = mlflow.pytorch.load_model(aesrgan_config.pretrained_ema_g_model_weights_path)
+                if aesrgan_config.architecture_g_change:
+                    # Create an Exponential Moving Average Model
+                    ema_avg = lambda averaged_model_parameter, model_parameter, num_averaged: (1 - aesrgan_config.model_ema_decay) * averaged_model_parameter + aesrgan_config.model_ema_decay * model_parameter
+                    ema_g_model2 = AveragedModel(g_model, avg_fn=ema_avg)
+                    ema_g_model2.load_state_dict(ema_g_model.state_dict(), strict=False)
+                    ema_g_model=ema_g_model2
                 print(f"Loaded `{aesrgan_config.pretrained_ema_g_model_weights_path}` pretrained model weights successfully.")
             except:
                 print(f"Failed to load ema_g_model! Path = `{aesrgan_config.pretrained_ema_g_model_weights_path}`")
@@ -558,7 +568,7 @@ def validate(
             lr = batch_data["lr"].to(device=aesrgan_config.device, non_blocking=True)
 
             # Crop image patch
-            gt, lr = random_crop(gt, lr, aesrgan_config.gt_image_size, aesrgan_config.upscale_factor)
+            #gt, lr = random_crop(gt, lr, aesrgan_config.gt_image_size, aesrgan_config.upscale_factor)
 
             # inference
             sr = bsrnet_model(lr)
