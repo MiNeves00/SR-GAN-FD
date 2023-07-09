@@ -46,7 +46,7 @@ only_test_y_channel = True
 niqe_model_path = "./results/pretrained_models/niqe_model.mat"
 lpips_net = 'alex'
 # Model architecture name
-d_model_arch_name = "discriminator_unet_sa"
+d_model_arch_name = "discriminator_unet"
 g_model_arch_name = "bsrgan_x2"
 # DiscriminatorUNet configure
 d_in_channels = 3
@@ -61,7 +61,7 @@ g_num_rrdb = 23
 # Upscale factor
 upscale_factor = 2
 # Current configuration parameter method
-mode = "train"
+mode = "test"
 optimizing_metric = "LPIPS"
 loadsFromMlrun = False
 # Experiment name, easy to save weights and log files
@@ -71,11 +71,11 @@ exp_name = "BSRGAN_x2-DIV2K_degradations"
 experience_name = 'BSRGANsa_x2_bubbles' # each name is associated with unique id
 #experience_name = 'BSRGAN_x2_AirfRANs'
 run_name = 'bsrgansa_fromML'
-run_id = '7f2f31a95ae444ee8a90d67caa2d72ad' # used to resume runs
+run_id = 'fa8a220b890240d7981796c865e9dfdb' # used to resume runs. Run with other datasets: fa8a220b890240d7981796c865e9dfdb
 tags = ''
 description = 'BSRGAN with SelfAttention on discriminator only by GPT4. Upscale 2 degradation function id=f7f08d67ddd04543bf87d1a36719cef7. The generator and discriminator are from the pretrained models focus on LPIPS. Higher lr for discrminator than generator.'
 
-experiment_id = '589683858730322811' # for testing
+experiment_id = '815542563266978794' # for testing
 
 if mode == "train":
     print("Train")
@@ -169,7 +169,7 @@ if mode == "test":
     upscale_lpips_eval = 2
 
     save_images = True
-    save_discriminator_eval = True
+    save_discriminator_eval = False
     save_metrics = True
     subdivision_lpips = False
     save_discriminator_attention_layers = False
@@ -179,11 +179,13 @@ if mode == "test":
 
     
 
-    #gt_dir = f"../data/AirfRANs/vtuNUT/test"
-    gt_dir = f"../data/Bubbles/test"
+    gt_dir = f"../data/AirfRANs/vtuNUT/test"
+    #gt_dir = f"../data/Bubbles/test"
+    #gt_dir = f"../data/DICOM/DICOM_Frame_Sequence"
+    #gt_dir = f"../data/AmostraLR/Microscopio/0.5mm"
 
-    g_model_weights_path = f"./mlruns/"+experiment_id+"/"+run_id+"/artifacts/"+modelType+"_g_model"
-
+    #g_model_weights_path = f"./mlruns/"+experiment_id+"/"+run_id+"/artifacts/"+modelType+"_g_model"
+    pretrained_g_model_weights_path = "./results/pretrained_models/BSRGAN/BSRGAN_x2-DIV2K-62958d37.pth.tar"
     
 
     if save_discriminator_eval or save_discriminator_attention_layers:

@@ -16,6 +16,7 @@ import os
 import cv2
 import torch
 from natsort import natsorted
+from utils import load_state_dict
 
 import bsrgan_config
 import mlflow
@@ -59,7 +60,7 @@ def build_model() -> [nn.Module, nn.Module]:
 def main() -> None:
 
     # Set MLflow experiment & run
-    mlflow.set_experiment(bsrgan_config.experience_name)
+    #mlflow.set_experiment(bsrgan_config.experience_name)
     try:
       mlflow.start_run(run_id=bsrgan_config.run_id)
     except: # If last session was not ended
@@ -93,7 +94,8 @@ def main() -> None:
     g_type_before = type(g_model)
     
     # Load Generator Model
-    g_model = mlflow.pytorch.load_model(bsrgan_config.g_model_weights_path)
+    #g_model = mlflow.pytorch.load_model(bsrgan_config.g_model_weights_path)
+    g_model = load_state_dict(g_model, bsrgan_config.pretrained_g_model_weights_path)
     bsrgan_model = g_model.to(device=bsrgan_config.device)
     bsrgan_model.eval()
 
@@ -147,8 +149,8 @@ def main() -> None:
     # Get the number of test image files.
     total_files = int(len(file_names))
 
-    pathLR = "testImagesLR/"
-    pathTest = "testImages"+bsrgan_config.modelType+"/"
+    pathLR = "AirfransLRPretrainedtestImagesLR/"
+    pathTest = "AirfransPretrainedtestImages"+bsrgan_config.modelType+"/"
     pathDiscriminatorGT = "testDiscriminatorGT"+bsrgan_config.modelType+"/"
     pathDiscriminatorSR = "testDiscriminatorSR"+bsrgan_config.modelType+"/"
     pathAttention = "testAttention"+bsrgan_config.modelType+"/"
@@ -219,9 +221,10 @@ def main() -> None:
           mlflow.log_image(attention_image, pathAttention+file_names[index])
 
         # Cal IQA metrics
-        psnr_metrics += psnr(sr_tensor, gt_tensor).item()
-        ssim_metrics += ssim(sr_tensor, gt_tensor).item()
-        niqe_metrics += niqe(sr_tensor).item()
+        if bsrgan_config.save_metrics:
+          psnr_metrics += psnr(sr_tensor, gt_tensor).item()
+          ssim_metrics += ssim(sr_tensor, gt_tensor).item()
+          niqe_metrics += niqe(sr_tensor).item()
         
         sr_tensor = 2*sr_tensor - 1 # Normalize from [0,1] to [-1,1]
         gt_tensor = 2*gt_tensor - 1
@@ -264,7 +267,8 @@ def main() -> None:
           #print(f'Avg LPIPS: {avg_lpips_sub}')
           lpips_metrics += avg_lpips_sub
         else:
-           lpips_metrics += lpips(sr_tensor,gt_tensor).item()
+           if bsrgan_config.save_metrics:
+            lpips_metrics += lpips(sr_tensor,gt_tensor).item()
 
         #if index == 4:
         #  break
@@ -295,14 +299,14 @@ def main() -> None:
     print(f"PSNR: {avg_psnr:4.2f} [dB]\n"
           f"SSIM: {avg_ssim:4.4f} [u]\n"
           f"NIQE: {avg_niqe:4.2f} [100u]\n"
-          f"LPIPS: {avg_lpips:4.2f} [100u]")
+          f"LPIPS: {avg_lpips:4.4f} [100u]")
 
     metrics_dict = {"PSNR": avg_psnr, "SSIM": avg_ssim, "NIQE": avg_niqe, "LPIPS": avg_lpips}
     if bsrgan_config.save_discriminator_eval:
        metrics_dict = {"PSNR": avg_psnr, "SSIM": avg_ssim, "NIQE": avg_niqe, "LPIPS": avg_lpips, "GT Prob": avg_gt_prob_metrics, "SR Prob": avg_sr_prob_metrics, "GT Loss": avg_gt_loss_metrics, "SR Loss": avg_sr_loss_metrics, "Total Loss": avg_total_loss_metrics}
 
-    if bsrgan_config.save_metrics:
-      mlflow.log_dict(metrics_dict,"testMetrics"+bsrgan_config.modelType+".json")
+    #if bsrgan_config.save_metrics:
+    #  mlflow.log_dict(metrics_dict,"testMetrics"+bsrgan_config.modelType+".json")
 
     mlflow.end_run()
 

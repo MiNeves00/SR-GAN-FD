@@ -183,8 +183,8 @@ if mode == "test":
     
 
     #gt_dir = f"../data/AirfRANs/vtuNUT/test"
-    #gt_dir = f"../data/Bubbles/test"
-    gt_dir = f"../data/DICOM/DICOM_Frame_Sequence"
+    gt_dir = f"../data/Bubbles/test"
+    #gt_dir = f"../data/DICOM/DICOM_Frame_Sequence"
 
     g_model_weights_path = f"./mlruns/"+experiment_id+"/"+run_id+"/artifacts/"+modelType+"_g_model"
 
