@@ -1,5 +1,5 @@
-# FD-SR
-Super-Resolution Generative Adversarial Networks (GAN) methods for Fluid Dynamics images.
+# SR-GAN-FD
+Super-Resolution (SR) Generative Adversarial Networks (GAN) methods for Fluid Dynamics (FD) images.
 
 FD-SR is a project part of a Master's Thesis at FEUP partnered with LIACC (Artificial Intelligence and Computer Science Lab).
 
@@ -27,20 +27,21 @@ This configuration file sets various parameters, including:
 - Training parameters like dataset address, batch size, number of epochs, learning rate, etc
 - Testing parameters like directory for ground truth images, whether to save images and metrics, etc.
 
-You can find the full configuration file [here](bsrgan_config.py).
+You can find the BSRGAN configuration file [here](BSRGAN/bsrgan_config.py).
 
 ## Training
 To train the models, you need to navigate into the respective model's folder. For example, to train the BSRGAN model, follow these steps:
 
 1. Change your current directory to the BSRGAN folder: `cd BSRGAN`
-2. Modify the mode to `train` in the configuration script: `python bsrgan_config.py`
+2. Modify the mode to `train` in the configuration script and choose if a pretrained model should be loaded (from a MLFlow run or from a file): `python bsrgan_config.py`
 3. Run the training script: `python train_bsrgan.py`
 
 ## Testing
 To test the models, you need to run the test script inside the respective model's folder. For example, to test the BSRGAN model, follow these steps:
 
 1. Change your current directory to the BSRGAN folder: `cd BSRGAN`
-2. Modify the mode to `test` in the configuration script: `python bsrgan_config.py`
+2. Modify the mode to `test` in the configuration script and provide the path to the model: `python bsrgan_config.py`
 3. Run the testing script: `python test_bsrgan.py`
+4. Resulting metrics and images are presented in the respective MLFlow folder: `cd mlruns/{experiment_id}/{run_id}`
 
 For detailed instructions and more information about the project, see the comments in the provided scripts.
